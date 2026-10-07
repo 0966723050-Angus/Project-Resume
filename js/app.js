@@ -915,9 +915,16 @@
   }
 
   // ---------- 分享連結免登入檢視(經由 Apps Script) ----------
-  async function gasGet(params) {
+  async function gasGet(params, tries = 2) {
     const url = CFG.SHARE_URL + '?' + new URLSearchParams(params).toString();
-    const resp = await fetch(url);
+    // 逾時(25 秒)自動重試一次
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 25000);
+    let resp;
+    try { resp = await fetch(url, { signal: ctl.signal }); } catch (err) {
+      if (tries > 1) return gasGet(params, tries - 1);
+      throw new Error(err.name === 'AbortError' ? '連線逾時,請稍後再試' : '無法連線');
+    } finally { clearTimeout(timer); }
     if (!resp.ok) throw new Error('讀取失敗(' + resp.status + ')');
     const j = await resp.json();
     if (!j.ok) throw new Error(j.error || '讀取失敗');
