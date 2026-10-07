@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ATK專案履歷</title>
+<meta name="description" content="ATK 專案履歷與殘件項目的手機編輯工具,直接讀寫 Google 雲端硬碟上的 Project Resume.xlsx">
+<meta name="theme-color" content="#1e40af">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ATK專案履歷">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css?v=dev">
+</head>
+<body>
+  <header class="app-header">
+    <button id="menuBtn" class="icon-btn" type="button" aria-label="選單">☰</button>
+    <button id="backBtn" class="icon-btn" type="button" aria-label="返回" hidden>←</button>
+    <div class="title-wrap">
+      <h1 id="pageTitle">ATK專案履歷</h1>
+      <div id="subLine" class="file-line"></div>
+    </div>
+    <button id="linkBtn" class="icon-btn" type="button" aria-label="複製連結" title="複製此專案履歷的連結" hidden>🔗</button>
+    <button id="saveBtn" class="btn btn-save" type="button" hidden>儲存</button>
+  </header>
+
+  <div id="drawerBackdrop" class="backdrop" hidden></div>
+  <aside id="drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-brand">ATK專案履歷</div>
+    <a class="drawer-item" href="#/" data-nav="list">📋 專案履歷</a>
+    <a class="drawer-item" href="#/remain" data-nav="remain">🧩 殘件項目</a>
+    <a class="drawer-item" href="#/settings" data-nav="settings">⚙️ 設定</a>
+    <div id="userLine" class="drawer-user"></div>
+  </aside>
+
+  <main id="main">
+    <section id="welcome" class="welcome">
+      <div class="welcome-card">
+        <img src="icons/icon.svg" alt="" width="64" height="64">
+        <h2>ATK專案履歷</h2>
+        <p>以公司 Google 帳號登入後,即可在手機上建立、查詢、編輯專案履歷與殘件項目,資料直接存回雲端硬碟的 Project Resume.xlsx。</p>
+        <button id="signInBtn" class="btn btn-primary btn-lg" type="button">使用 Google 帳號登入</button>
+        <p id="welcomeMsg" class="hint"></p>
+      </div>
+    </section>
+
+    <!-- 專案履歷列表 -->
+    <section id="listView" class="view" hidden>
+      <div class="filter-bar">
+        <div class="combo filter-code">
+          <input id="fCode" type="text" placeholder="專案代號" aria-label="專案代號" autocomplete="off">
+          <span class="combo-btn">▾</span>
+          <select id="fCodeSel" class="combo-select" aria-label="選擇專案代號"></select>
+        </div>
+        <button id="fClear" class="btn btn-ghost btn-sm" type="button">清除</button>
+      </div>
+      <div class="filter-bar dates">
+        <label>作業日期<input id="fFrom" type="date" aria-label="作業日期起"></label>
+        <span>~</span>
+        <label><input id="fTo" type="date" aria-label="作業日期迄"></label>
+      </div>
+      <div id="listCount" class="count-line"></div>
+      <div id="resumeList" class="card-list"></div>
+      <div id="listEmpty" class="empty" hidden>沒有符合的專案履歷</div>
+      <button id="addResume" class="fab" type="button">＋ 新增</button>
+    </section>
+
+    <!-- 專案履歷編輯 -->
+    <section id="resumeView" class="view" hidden>
+      <form id="resumeForm" autocomplete="off" onsubmit="return false">
+        <div class="panel">
+          <h3 class="panel-title">基本資料</h3>
+          <div id="headFields" class="fields"></div>
+        </div>
+        <div id="problemList"></div>
+        <div class="form-actions">
+          <button id="addProblem" class="btn btn-ghost" type="button">＋ 新增問題</button>
+          <button id="toRemain" class="btn btn-warn" type="button">殘件</button>
+        </div>
+        <button id="deleteResume" class="btn btn-danger-ghost wide" type="button">刪除此專案履歷</button>
+      </form>
+    </section>
+
+    <!-- 殘件項目列表 -->
+    <section id="remainView" class="view" hidden>
+      <div class="filter-bar">
+        <select id="rProject" aria-label="選擇專案"></select>
+        <select id="rStatus" aria-label="狀態" class="narrow">
+          <option value="">全部狀態</option><option value="Open">Open</option><option value="Close">Close</option>
+        </select>
+      </div>
+      <div class="toolbar">
+        <button id="addRemain" class="btn btn-primary btn-sm" type="button">＋ 新增殘件</button>
+        <button id="exportRemain" class="btn btn-ghost btn-sm" type="button">⬇️ 匯出 Excel</button>
+      </div>
+      <div id="remainCount" class="count-line"></div>
+      <div id="remainList" class="card-list"></div>
+      <div id="remainEmpty" class="empty" hidden>此專案沒有殘件項目</div>
+    </section>
+
+    <!-- 殘件編輯 -->
+    <section id="remainEditView" class="view" hidden>
+      <form id="remainForm" autocomplete="off" onsubmit="return false">
+        <div class="panel"><div id="remainFields" class="fields"></div></div>
+        <button id="deleteRemain" class="btn btn-danger-ghost wide" type="button">刪除此殘件</button>
+      </form>
+    </section>
+
+    <!-- 設定 -->
+    <section id="settingsView" class="view" hidden>
+      <div class="panel">
+        <h3 class="panel-title">帳號與檔案</h3>
+        <div id="acctInfo" class="acct"></div>
+        <div class="btn-row">
+          <button id="reloadBtn" class="btn btn-ghost btn-sm" type="button">🔄 從雲端重新載入</button>
+          <button id="openDriveBtn" class="btn btn-ghost btn-sm" type="button">↗️ 在雲端硬碟開啟</button>
+          <button id="signOutBtn" class="btn btn-danger-ghost btn-sm" type="button">登出</button>
+        </div>
+      </div>
+      <p class="hint pad">下拉選單的項目存在 Excel「Choice」工作表;在這裡或在各欄位的選單中新增/刪除都會直接存回雲端。</p>
+      <div id="listEditors"></div>
+    </section>
+  </main>
+
+  <!-- 選單(下拉清單,可新增/刪除項目) -->
+  <div id="picker" class="sheet-overlay" hidden>
+    <div class="picker" role="dialog" aria-modal="true">
+      <div class="picker-head">
+        <b id="pickerTitle"></b>
+        <button id="pickerEdit" type="button" class="link-btn">編輯清單</button>
+        <button id="pickerClose" type="button" class="icon-btn" aria-label="關閉">✕</button>
+      </div>
+      <input id="pickerSearch" type="search" placeholder="搜尋…" aria-label="搜尋">
+      <div id="pickerList" class="picker-list"></div>
+      <div id="pickerAdd" class="picker-add"></div>
+      <div id="pickerFoot" class="picker-foot"><button id="pickerOk" class="btn btn-primary" type="button">確定</button></div>
+    </div>
+  </div>
+
+  <!-- 對話框 -->
+  <div id="confirmBox" class="sheet-overlay center" hidden>
+    <div class="dialog">
+      <h3 id="confirmTitle"></h3>
+      <div id="confirmMsg" class="dialog-body"></div>
+      <div id="confirmBtns" class="dialog-btns"></div>
+    </div>
+  </div>
+
+  <!-- 圖片檢視 -->
+  <div id="lightbox" class="lightbox" hidden><img id="lightboxImg" alt=""><a id="lightboxLink" target="_blank" rel="noopener">在雲端硬碟開啟</a></div>
+
+  <div id="busy" class="busy" hidden><div class="spinner"></div><div id="busyMsg">處理中…</div></div>
+  <div id="toast" class="toast" role="status"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="js/config.js?v=dev"></script>
+  <script src="js/store.js?v=dev"></script>
+  <script src="js/export.js?v=dev"></script>
+  <script src="js/drive.js?v=dev"></script>
+  <script>
+    // 本機測試:localhost 且網址帶 ?mock=1 時改用模擬雲端硬碟
+    if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /[?&]mock=1/.test(location.search)) {
+      document.write('<script src="js/mock-drive.js"><\/script>');
+    }
+  </script>
+  <script src="js/app.js?v=dev"></script>
+</body>
+</html>
