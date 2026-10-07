@@ -19,6 +19,11 @@
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   window.Drive = {
     async ensureToken() { return 'mock'; },
+    async requestToken() { return 'mock'; },
+    isSignedIn: () => true,
+    savedAccount: () => 'test@example.com',
+    setReauth() {},
+    refreshOnGesture() {},
     async whoAmI() { const u = localStorage.getItem('pr_mock_user'); return u ? JSON.parse(u) : { displayName: '測試者', emailAddress: 'test@example.com' }; },
     signOut() {},
     async findByName() { return meta(); },

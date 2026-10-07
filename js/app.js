@@ -60,9 +60,11 @@
   async function signIn() {
     try {
       busy('登入 Google…');
-      await Drive.ensureToken();
+      // 由登入鍵直接開 Google 視窗;此裝置登入過就不再顯示選帳號畫面
+      if (!Drive.isSignedIn()) await Drive.requestToken(Drive.savedAccount() ? '' : undefined);
       S.user = await Drive.whoAmI().catch(() => null);
       if (S.user) $('userLine').textContent = `${S.user.displayName}\n${S.user.emailAddress}`;
+      $('navSettings').hidden = !isAdmin(); // 設定只有管理者看得到
       busy(`尋找「${CFG.FILE_NAME}」…`);
       const f = await Drive.findByName(CFG.FILE_NAME);
       if (!f) {
@@ -158,7 +160,7 @@
     else if (parts[0] === 'r') openResume(parts[1] || 'new');
     else if (parts[0] === 'remain' && parts[1]) openRemain(parts[1], q.get('p'));
     else if (parts[0] === 'remain') showRemainList(q.get('p'));
-    else if (parts[0] === 'settings') showSettings();
+    else if (parts[0] === 'settings' && isAdmin()) showSettings();
     else showList();
   }
   let lastHash = location.hash;
@@ -1180,8 +1182,36 @@
     try { await reload(); toast('已重新載入'); showSettings(); } catch (err) { toast(errMsg(err), 5000); }
   };
   $('openDriveBtn').onclick = () => { if (S.meta && S.meta.webViewLink) window.open(S.meta.webViewLink, '_blank', 'noopener'); };
-  $('signOutBtn').onclick = () => { Drive.signOut(); location.hash = ''; location.reload(); };
+  const signOut = () => { Drive.signOut(); location.hash = ''; location.reload(); };
+  $('signOutBtn').onclick = signOut;
+  $('navSignOut').onclick = async () => {
+    toggleDrawer(false);
+    if (await confirmYes('登出', `確定登出 ${myEmail()}?\n下次開啟需要重新登入。`, '登出', 'btn-danger')) signOut();
+  };
   $('signInBtn').onclick = signIn;
+
+  // 權杖過期(約 1 小時)時:顯示「繼續」鍵,點擊後以記住的帳號自動完成登入(不需再選帳號)
+  let reauthPending = null;
+  Drive.setReauth(() => reauthPending || (reauthPending = new Promise((resolve, reject) => {
+    const busyMsg = !$('busy').hidden ? $('busyMsg').textContent : '';
+    busy('');
+    $('confirmTitle').textContent = '登入已逾時';
+    $('confirmMsg').textContent = `請按「繼續」以 ${Drive.savedAccount()} 繼續使用(不需重新選帳號)。`;
+    const box = $('confirmBtns');
+    box.innerHTML = '';
+    const done = () => { $('confirmBox').hidden = true; reauthPending = null; };
+    box.append(
+      h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => { done(); reject(new Error('已取消登入')); } }, '取消'),
+      h('button', {
+        type: 'button', class: 'btn btn-primary', onclick: () => {
+          // 必須在點擊當下直接開 Google 視窗,否則會被瀏覽器擋住
+          Drive.requestToken('').then((t) => { done(); if (busyMsg) busy(busyMsg); resolve(t); }, (e) => { done(); reject(e); });
+        },
+      }, '繼續'));
+    $('confirmBox').hidden = false;
+  })));
+  // 使用中權杖快到期時,趁點擊自動更新
+  document.addEventListener('click', () => { if (S.ready) Drive.refreshOnGesture(); }, true);
 
   // ---------- 其他 ----------
   document.addEventListener('keydown', (e) => {
@@ -1237,8 +1267,13 @@
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
   route();
-  // 本機模擬模式自動登入
-  if (window.Drive && Drive.__reset) signIn();
+  // 此裝置登入過:權杖仍有效就直接進入;已過期則登入畫面顯示「繼續使用 xxx」(一鍵、免選帳號)
+  const acct = Drive.savedAccount();
+  if (Drive.__reset || Drive.isSignedIn()) signIn();
+  else if (acct) {
+    $('signInBtn').textContent = `繼續使用 ${acct}`;
+    if (!$('welcomeMsg').textContent) $('welcomeMsg').textContent = '此裝置已登入過,按上方按鍵即可繼續(不需重新選帳號)。';
+  }
 
   window.__pr = { S, Store, commit, get editing() { return editing; } };
 })();

@@ -2,7 +2,8 @@
 // Google 登入 + 雲端硬碟檔案存取(支援共用雲端硬碟 ATK,所有呼叫都帶 supportsAllDrives=true)
 (function () {
   const CFG = window.APP_CONFIG;
-  const LS_HINT = 'pr_login_hint';
+  const LS_HINT = 'pr_login_hint';   // 此裝置曾登入的帳號(下次免選帳號)
+  const LS_TOKEN = 'pr_token';       // 存取權杖(約 1 小時有效),重新開啟 App 時免再登入
   const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const FOLDER_MIME = 'application/vnd.google-apps.folder';
   const API = 'https://www.googleapis.com/drive/v3/files';
@@ -12,9 +13,17 @@
   let tokenClient = null;
   let accessToken = null;
   let tokenExpiry = 0;
+  let reauth = null;      // 權杖過期且無法自動更新時,由 App 顯示「繼續」對話框重新取得
+  let refreshing = null;
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
   function lsSet(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} }
+
+  // 還原上次的權杖(未過期才用)
+  try {
+    const saved = JSON.parse(lsGet(LS_TOKEN) || 'null');
+    if (saved && saved.t && saved.exp > Date.now() + 60000) { accessToken = saved.t; tokenExpiry = saved.exp; }
+  } catch {}
 
   function requestToken(prompt) {
     return new Promise((resolve, reject) => {
@@ -29,9 +38,14 @@
         if (resp.error) { reject(new Error(resp.error_description || resp.error)); return; }
         accessToken = resp.access_token;
         tokenExpiry = Date.now() + (Number(resp.expires_in) || 3600) * 1000 - 60000;
+        lsSet(LS_TOKEN, JSON.stringify({ t: accessToken, exp: tokenExpiry }));
         resolve(accessToken);
       };
-      tokenClient.error_callback = (err) => reject(new Error(err && err.type === 'popup_closed' ? '已關閉登入視窗' : '登入失敗'));
+      tokenClient.error_callback = (err) => {
+        const e = new Error(err && err.type === 'popup_closed' ? '已關閉登入視窗' : err && err.type === 'popup_failed_to_open' ? '登入視窗被瀏覽器擋住' : '登入失敗');
+        e.type = err && err.type;
+        reject(e);
+      };
       const opts = { prompt: prompt ?? '' };
       const hint = lsGet(LS_HINT);
       if (hint) opts.login_hint = hint;
@@ -41,15 +55,28 @@
 
   async function ensureToken() {
     if (accessToken && Date.now() < tokenExpiry) return accessToken;
-    return requestToken(accessToken ? '' : undefined);
+    // 已登入過的裝置:在非點擊情境下開不了登入視窗,改由 App 顯示「繼續」鍵(點擊後自動完成,不需再選帳號)
+    if (reauth && lsGet(LS_HINT)) return reauth();
+    return requestToken(lsGet(LS_HINT) ? '' : undefined);
   }
+
+  // 使用中若權杖快到期,趁使用者點擊時自動更新(Google 視窗會自動關閉),避免操作到一半要重新登入
+  function refreshOnGesture() {
+    if (refreshing || !accessToken || !lsGet(LS_HINT) || tokenExpiry - Date.now() > 10 * 60000) return;
+    refreshing = requestToken('').catch(() => {}).finally(() => { refreshing = null; });
+  }
+
+  const isSignedIn = () => !!accessToken && Date.now() < tokenExpiry;
+  const savedAccount = () => lsGet(LS_HINT);
+  const setReauth = (fn) => { reauth = fn; };
 
   async function api(url, opts = {}, retry = true) {
     await ensureToken();
     const resp = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + accessToken } });
     if (resp.status === 401 && retry) {
       accessToken = null;
-      await requestToken('');
+      tokenExpiry = 0;
+      await ensureToken();
       return api(url, opts, false);
     }
     return resp;
@@ -149,9 +176,10 @@
     accessToken = null;
     tokenExpiry = 0;
     lsSet(LS_HINT, null);
+    lsSet(LS_TOKEN, null);
   }
 
   const viewLink = (id) => `https://drive.google.com/file/d/${id}/view`;
 
-  window.Drive = { ensureToken, findByName, getMeta, download, upload, createFile, ensureFolder, media, trash, whoAmI, signOut, viewLink };
+  window.Drive = { requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, getMeta, download, upload, createFile, ensureFolder, media, trash, whoAmI, signOut, viewLink };
 })();

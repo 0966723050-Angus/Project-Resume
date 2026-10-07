@@ -306,3 +306,7 @@ span.combo-btn { display: flex; align-items: center; justify-content: center; po
 }
 .dt-colon { font-weight: 700; color: var(--muted); }
 textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
+.drawer-foot { margin-top: auto; border-top: 1px solid var(--border); padding-top: 6px; }
+.drawer-foot .drawer-user { margin-top: 0; border-top: 0; padding: 4px 12px 6px; }
+.drawer-foot .drawer-item { width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.drawer-item.danger { color: var(--danger); }
