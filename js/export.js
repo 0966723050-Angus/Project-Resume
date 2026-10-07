@@ -9,7 +9,7 @@
 
   // 匯出的欄位(不含內部用的「來源履歷」「殘件編號」);附件只列檔名與連結
   const COLS = [
-    ['date', 12, 'd'], ['code', 14, 'c'], ['name', 22, 'w'], ['problem', 30, 'w'], ['cause', 24, 'w'], ['temp', 22, 'w'],
+    ['seq', 7, 'c'], ['date', 12, 'd'], ['code', 14, 'c'], ['name', 22, 'w'], ['problem', 30, 'w'], ['cause', 24, 'w'], ['temp', 22, 'w'],
     ['perm', 24, 'w'], ['ecn', 8, 'c'], ['dept', 11, 'c'], ['owner', 11, 'c'], ['due', 12, 'd'], ['progress', 26, 'w'],
     ['status', 9, 'c'], ['note', 20, 'w'], ['files', 34, 'w'],
   ];
@@ -20,7 +20,7 @@
   }
 
   function build(items, title) {
-    const titles = Object.fromEntries(CFG.REMAIN_COLS.map((c) => [c.key, c.title]));
+    const titles = { seq: '項次', ...Object.fromEntries(CFG.REMAIN_COLS.map((c) => [c.key, c.title])) };
     const last = idxToCol(COLS.length);
     let rows = `<row r="1" ht="22" customHeight="1"><c r="A1" s="5" t="inlineStr"><is><t>${escXml(title)}</t></is></c></row>`;
     rows += '<row r="2" ht="30" customHeight="1">' + COLS.map(([k], i) =>
@@ -30,6 +30,7 @@
       let lines = 1;
       const cells = COLS.map(([k, w, kind], i) => {
         const ref = idxToCol(i + 1) + r;
+        if (k === 'seq') return `<c r="${ref}" s="4"><v>${n + 1}</v></c>`; // 項次(數字)
         let v = it[k] ?? '';
         if (k === 'files') v = String(v).split('\n').filter(Boolean).join('\n');
         if (kind === 'd') {

@@ -648,6 +648,17 @@
   let filterTimer;
   $('fCode').oninput = () => { clearTimeout(filterTimer); filterTimer = setTimeout(renderList, 150); };
   $('fCodeSel').onchange = () => { $('fCode').value = $('fCodeSel').value; $('fCodeSel').value = ''; renderList(); };
+  // 作業日期快捷鍵:今天 / 本週(週一~週日)
+  const isoOf = (t) => `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+  $('fToday').onclick = () => { $('fFrom').value = $('fTo').value = todayISO(); renderList(); };
+  $('fWeek').onclick = () => {
+    const t = new Date();
+    const mon = new Date(t.getFullYear(), t.getMonth(), t.getDate() - ((t.getDay() + 6) % 7));
+    const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+    $('fFrom').value = isoOf(mon);
+    $('fTo').value = isoOf(sun);
+    renderList();
+  };
   $('fFrom').onchange = renderList;
   $('fTo').onchange = renderList;
   $('fClear').onclick = () => { $('fCode').value = ''; $('fFrom').value = ''; $('fTo').value = ''; renderList(); };
@@ -1122,7 +1133,7 @@
     const proj = code ? `${code} ${remainProjects().find(([c]) => c === code)?.[1] || ''}`.trim() : '全部專案';
     const st = $('rStatus').value;
     const t = todayISO().replace(/-/g, '');
-    const bytes = Exporter.build(items, `${proj} 殘件項目${st ? `(${st})` : ''}　匯出日期 ${fmtDate(todayISO())}`);
+    const bytes = Exporter.build(items, `${proj} 殘件項目${st ? `(${st})` : ''}`);
     const name = `殘件項目_${(code || '全部').replace(/[\\/:*?"<>|]/g, '_')}_${t}.xlsx`;
     const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const file = new File([bytes], name, { type });

@@ -310,3 +310,6 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 .drawer-foot .drawer-user { margin-top: 0; border-top: 0; padding: 4px 12px 6px; }
 .drawer-foot .drawer-item { width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; }
 .drawer-item.danger { color: var(--danger); }
+.quick-dates { display: flex; gap: 8px; align-items: center; margin: 2px 0 6px; }
+.qd-label { font-size: 13px; color: var(--muted); margin-right: 2px; }
+.quick-dates .btn { flex: 0 0 auto; min-width: 72px; }
