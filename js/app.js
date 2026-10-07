@@ -931,7 +931,7 @@
     return j;
   }
   async function publicView(id, key) {
-    busy('讀取專案履歷…');
+    busy('讀取專案履歷…(第一次開啟約需數秒)');
     try {
       const j = await gasGet({ id, k: key || '' });
       j.resume.shareKey = key;
