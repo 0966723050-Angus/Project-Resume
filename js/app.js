@@ -106,7 +106,7 @@
   }
 
   // ---------- 頁首 / 版面 ----------
-  const VIEWS = ['welcome', 'listView', 'resumeView', 'remainView', 'remainEditView', 'settingsView'];
+  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'settingsView'];
   function showView(id, { title = 'ATK專案履歷', sub = '', back = null, save = false, link = false } = {}) {
     for (const v of VIEWS) $(v).hidden = v !== id;
     setTitle(title, sub);
@@ -131,6 +131,13 @@
     return `${CFG.FILE_NAME} · ${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())} 更新`;
   }
   const isDirty = () => !!editing && JSON.stringify(editing.obj) !== editing.snapshot;
+
+  // ---------- 權限:已建立的項目只有管理者與填表人可修改 ----------
+  const myEmail = () => String((S.user && S.user.emailAddress) || '').toLowerCase();
+  const myName = () => (S.user && (S.user.displayName || S.user.emailAddress)) || '';
+  const isAdmin = () => CFG.ADMINS.map((x) => x.toLowerCase()).includes(myEmail());
+  const canEdit = (rec) => isAdmin() || (!!rec.authorEmail && String(rec.authorEmail).toLowerCase() === myEmail());
+  const authorLine = (rec) => '填表人:' + (rec.author || '(未記錄)');
   function markDirty() { $('saveBtn').classList.toggle('dirty', isDirty()); }
 
   // ---------- 路由 ----------
@@ -143,11 +150,12 @@
     if (!S.ready) {
       showView('welcome', { title: 'ATK專案履歷' });
       const { parts } = parseHash();
-      if (parts[0] === 'r' && parts[1] && parts[1] !== 'new' && !$('welcomeMsg').textContent) $('welcomeMsg').textContent = '登入後將開啟分享的專案履歷。';
+      if (parts[0] === 'v' && parts[1] && !$('welcomeMsg').textContent) $('welcomeMsg').textContent = '登入後將開啟分享的專案履歷。';
       return;
     }
     const { parts, q } = parseHash();
-    if (parts[0] === 'r') openResume(parts[1] || 'new');
+    if (parts[0] === 'v' && parts[1]) viewResume(parts[1]);
+    else if (parts[0] === 'r') openResume(parts[1] || 'new');
     else if (parts[0] === 'remain' && parts[1]) openRemain(parts[1], q.get('p'));
     else if (parts[0] === 'remain') showRemainList(q.get('p'));
     else if (parts[0] === 'settings') showSettings();
@@ -378,11 +386,39 @@
     return h('div', { class: 'field' }, h('span', { class: 'flabel' }, label), box);
   }
   function fDate(label, obj, key, { time = false, onChange } = {}) {
-    const el = h('input', { type: time ? 'datetime-local' : 'date' });
+    if (time) return fDateTime(label, obj, key, onChange);
+    const el = h('input', { type: 'date' });
     el.value = obj[key] || '';
     el.addEventListener('change', () => { obj[key] = el.value; if (onChange) onChange(el.value); markDirty(); });
     el.addEventListener('input', () => { obj[key] = el.value; markDirty(); });
     return field(label, el);
+  }
+
+  // 日期 + 時/分(24 小時制;不用原生 datetime-local,避免顯示上午/下午)
+  function fDateTime(label, obj, key, onChange) {
+    const m = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2}))?/.exec(obj[key] || '') || [];
+    const date = h('input', { type: 'date', class: 'dt-date', 'aria-label': label + '日期' });
+    date.value = m[1] || '';
+    const mkSel = (n, step, cur, aria) => {
+      const sel = h('select', { class: 'dt-sel', 'aria-label': aria });
+      const vals = [];
+      for (let i = 0; i < n; i += step) vals.push(pad(i));
+      if (cur && !vals.includes(cur)) { vals.push(cur); vals.sort(); }
+      for (const v of vals) sel.append(h('option', { value: v }, v));
+      sel.value = cur || vals[0];
+      return sel;
+    };
+    const hh = mkSel(24, 1, m[2] || '08', label + '時');
+    const mm = mkSel(60, 5, m[3] || '00', label + '分');
+    const sync = () => {
+      obj[key] = date.value ? `${date.value}T${hh.value}:${mm.value}` : '';
+      if (onChange) onChange(obj[key]);
+      markDirty();
+    };
+    for (const el of [date, hh, mm]) el.addEventListener('change', sync);
+    date.addEventListener('input', sync);
+    return h('div', { class: 'field' }, h('span', { class: 'flabel' }, label),
+      h('div', { class: 'dt-row' }, date, hh, h('span', { class: 'dt-colon' }, ':'), mm));
   }
 
   // 專案代號 ↔ 專案名稱 連動
@@ -549,17 +585,29 @@
     renderList();
   }
   function fillCodeFilter() {
-    const codes = [...new Set([...S.data.resumes.map((r) => r.code), ...lists().projects.map((p) => p.code)].filter(Boolean))].sort();
+    // 選項顯示「代號 名稱」(履歷中出現過的專案 + 清單中的專案)
+    const map = new Map();
+    for (const p of lists().projects) if (p.code) map.set(p.code, p.name || '');
+    for (const r of S.data.resumes) if (r.code && !map.get(r.code)) map.set(r.code, r.name || '');
     const sel = $('fCodeSel');
     sel.innerHTML = '';
-    sel.append(h('option', { value: '' }, '全部專案'));
-    for (const c of codes) sel.append(h('option', { value: c }, c));
+    sel.append(h('option', { value: '' }, '選擇專案…'));
+    for (const [c, n] of [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))) sel.append(h('option', { value: `${c} ${n}`.trim() }, `${c} ${n}`.trim()));
   }
   function renderList() {
     const code = $('fCode').value.trim().toLowerCase();
     const from = $('fFrom').value, to = $('fTo').value;
+    // 首頁不列出已建立的履歷:有查詢條件才顯示結果
+    const searching = !!(code || from || to);
+    $('listHint').hidden = searching;
+    if (!searching) {
+      $('resumeList').innerHTML = '';
+      $('listEmpty').hidden = true;
+      $('listCount').textContent = '';
+      return;
+    }
     const items = S.data.resumes.filter((r) => {
-      if (code && !String(r.code || '').toLowerCase().includes(code) && !String(r.name || '').toLowerCase().includes(code)) return false;
+      if (code && !`${r.code || ''} ${r.name || ''}`.toLowerCase().includes(code)) return false;
       const d = String(r.start || '').slice(0, 10);
       if ((from || to) && !d) return false;
       if (from && d < from) return false;
@@ -571,11 +619,13 @@
     for (const r of items) {
       const probs = r.problems.filter((p) => p.problem).length;
       const rc = remainCount(r);
-      box.append(h('a', { class: 'card', href: '#/r/' + encodeURIComponent(r.id) },
+      const mine = canEdit(r);
+      box.append(h('a', { class: 'card' + (mine ? '' : ' readonly'), href: (mine ? '#/r/' : '#/v/') + encodeURIComponent(r.id) },
         h('div', { class: 'card-top' },
           h('span', { class: 'date' }, fmtDT(r.start) || '未填日期'),
           r.stage ? h('span', { class: 'chip' }, r.stage) : null,
-          r.unit ? h('span', { class: 'chip' }, r.unit) : null),
+          r.unit ? h('span', { class: 'chip' }, r.unit) : null,
+          h('span', { class: 'author' }, (mine ? '' : '🔒 ') + (r.author || ''))),
         h('div', { class: 'card-title' }, h('span', { class: 'code' }, r.code || '(未填代號)'), ' ', r.name || ''),
         h('div', { class: 'card-sub' }, [r.plant, r.line, r.equip].filter(Boolean).join(' / ') || ' '),
         r.work ? h('div', { class: 'ptext' }, r.work) : null,
@@ -586,7 +636,7 @@
           r.members ? h('span', { class: 'members' }, '👥 ' + r.members) : null)));
     }
     $('listEmpty').hidden = items.length > 0;
-    $('listCount').textContent = `共 ${items.length} 份專案履歷` + (items.length !== S.data.resumes.length ? `(全部 ${S.data.resumes.length})` : '');
+    $('listCount').textContent = `查詢結果 ${items.length} 份專案履歷`;
   }
   let filterTimer;
   $('fCode').oninput = () => { clearTimeout(filterTimer); filterTimer = setTimeout(renderList, 150); };
@@ -612,22 +662,24 @@
     let obj, isNew = false;
     if (id === 'new') {
       isNew = true;
-      obj = { id: Store.newId('PR'), saved: true, code: '', name: '', plant: '', line: '', equip: '', unit: '', stage: '', start: nowRounded(), end: '', hours: '', members: '', work: '', problems: [blankProblem()] };
+      obj = { id: Store.newId('PR'), saved: true, code: '', name: '', plant: '', line: '', equip: '', unit: '', stage: '', start: nowRounded(), end: '', hours: '', members: '', work: '', problems: [blankProblem()], author: myName(), authorEmail: myEmail() };
     } else {
       const r = S.data.resumes.find((x) => x.id === id);
       if (!r) { toast('找不到此專案履歷(可能已被刪除,或請重新載入)', 4000); replaceHash('#/'); showList(); return; }
+      // 不是填表人(也不是管理者)→ 唯讀
+      if (!canEdit(r)) { replaceHash('#/v/' + encodeURIComponent(id)); viewResume(id); return; }
       obj = clone(r);
       if (!obj.problems.length) obj.problems.push(blankProblem());
     }
     editing = { type: 'resume', obj, snapshot: JSON.stringify(obj), isNew, uploads: [] };
-    showView('resumeView', { title: resumeTitle(obj), sub: isNew ? '新增專案履歷' : fileLine(), back: '#/', save: true, link: true });
+    showView('resumeView', { title: resumeTitle(obj), sub: authorLine(obj) + (isNew ? '(新增)' : ''), back: '#/', save: true, link: true });
     renderResumeForm();
     markDirty();
   }
 
   function renderResumeForm() {
     const obj = editing.obj;
-    const upTitle = () => setTitle(resumeTitle(obj));
+    const upTitle = () => setTitle(resumeTitle(obj), authorLine(obj));
     let hoursAuto = obj.hours === '' || obj.hours == null;
     const hoursF = fText('報工時數', obj, 'hours', { inputmode: 'decimal', onChange: () => { hoursAuto = false; } });
     const hoursInp = hoursF.querySelector('input');
@@ -700,6 +752,7 @@
   function applyResume(d, res) {
     d.changed.add('resume');
     const i = d.resumes.findIndex((r) => r.id === res.id);
+    if (i >= 0 && !canEdit(d.resumes[i])) throw new Error('只有填表人或管理者可以修改這份專案履歷');
     if (i >= 0) d.resumes[i] = res;
     else if (editing && editing.isNew) d.resumes.push(res);
     else throw new Error('雲端上的這份履歷已被刪除或在 Excel 中被修改,無法對應;請重新載入後再編輯');
@@ -723,45 +776,116 @@
     editing.obj = clone(res);
     editing.snapshot = JSON.stringify(editing.obj);
     replaceHash('#/r/' + encodeURIComponent(res.id));
-    setTitle(resumeTitle(res), fileLine());
+    setTitle(resumeTitle(res), authorLine(res));
     renderResumeForm();
     markDirty();
   }
 
   $('saveBtn').onclick = () => (editing && editing.type === 'remain' ? saveRemain() : saveResume());
 
-  // 複製連結(尚未儲存時先儲存)
-  $('linkBtn').onclick = async () => {
-    if (!editing || editing.type !== 'resume') return;
-    if (editing.isNew || isDirty()) {
-      if (!(await confirmYes('複製連結', '需要先儲存這份專案履歷,才能產生連結。', '儲存並複製'))) return;
-      if (!(await saveResume())) return;
-    }
-    const url = location.origin + location.pathname + '#/r/' + encodeURIComponent(editing.obj.id);
-    const title = resumeTitle(editing.obj);
+  // 複製連結(尚未儲存時先儲存):剪貼簿同時放「標題 + 連結」文字與超連結格式,
+  // 貼到 LINE/Teams/Email 都會看到「日期 專案代號 專案名稱 專案履歷」;連結開啟為唯讀
+  const shareUrl = (id) => location.origin + location.pathname + '#/v/' + encodeURIComponent(id);
+  async function copyLink(r) {
+    const url = shareUrl(r.id);
+    const title = resumeTitle(r);
+    const text = `${title}\n${url}`;
     try {
-      await navigator.clipboard.writeText(url);
-      toast('🔗 已複製連結');
+      if (window.ClipboardItem && navigator.clipboard.write) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+          'text/html': new Blob([`<a href="${esc(url)}">${esc(title)}</a>`], { type: 'text/html' }),
+        })]);
+      } else await navigator.clipboard.writeText(text);
+      toast('🔗 已複製:' + title, 3500);
     } catch {
-      // 部分手機瀏覽器在非直接點擊時不允許寫入剪貼簿 → 顯示連結讓使用者再按一次
-      const inp = h('input', { type: 'text', readonly: true, class: 'link-box' });
-      inp.value = url;
-      const body = h('div', {}, h('div', { class: 'hint' }, title), inp);
-      setTimeout(() => inp.select(), 50);
-      const ok = await dialog('專案履歷連結', body, [{ label: '關閉', value: false }, { label: '複製', value: true, cls: 'btn-primary' }]);
-      if (ok) {
-        inp.select();
-        try { await navigator.clipboard.writeText(url); toast('🔗 已複製連結'); } catch { document.execCommand('copy'); toast('🔗 已複製連結'); }
+      // 部分手機瀏覽器在非直接點擊時不允許寫入剪貼簿 → 顯示內容讓使用者再按一次
+      const ta = h('textarea', { readonly: true, class: 'link-box', rows: 3 });
+      ta.value = text;
+      setTimeout(() => ta.select(), 50);
+      const btns = [{ label: '關閉', value: false }, { label: '複製', value: 'copy', cls: 'btn-primary' }];
+      if (navigator.share) btns.splice(1, 0, { label: '分享…', value: 'share' });
+      const act = await dialog('專案履歷連結', ta, btns);
+      if (act === 'copy') {
+        ta.select();
+        try { await navigator.clipboard.writeText(text); } catch { document.execCommand('copy'); }
+        toast('🔗 已複製:' + title, 3500);
+      } else if (act === 'share') {
+        navigator.share({ title, text: title, url }).catch(() => {});
       }
     }
+  }
+  $('linkBtn').onclick = async () => {
+    if (editing && editing.type === 'resume') {
+      if (editing.isNew || isDirty()) {
+        if (!(await confirmYes('複製連結', '需要先儲存這份專案履歷,才能產生連結。', '儲存並複製'))) return;
+        if (!(await saveResume())) return;
+      }
+      return copyLink(editing.obj);
+    }
+    const { parts } = parseHash();
+    const r = parts[0] === 'v' && S.data.resumes.find((x) => x.id === parts[1]);
+    if (r) copyLink(r);
   };
+
+  // ---------- 唯讀檢視(分享連結 / 沒有修改權限) ----------
+  function roField(label, value, { pre = true } = {}) {
+    if (value == null || String(value).trim() === '') return null;
+    return h('div', { class: 'ro-field' }, h('div', { class: 'flabel' }, label), h('div', { class: 'ro-val' + (pre ? ' pre' : '') }, String(value)));
+  }
+  function roFiles(label, text, image) {
+    const links = parseLinks(text);
+    if (!links.length) return null;
+    const box = h('div', { class: image ? 'gallery' : 'attach-list' });
+    for (const ln of links) {
+      if (image) {
+        const img = h('img', { alt: ln.name, loading: 'lazy' });
+        loadThumb(img, ln.id);
+        box.append(h('div', { class: 'thumb', title: ln.name, onclick: () => (ln.id ? openLightbox(ln) : null) }, img));
+      } else {
+        box.append(h('div', { class: 'attach' }, ln.url ? h('a', { href: ln.url, target: '_blank', rel: 'noopener' }, '📎 ' + ln.name) : h('span', {}, '📎 ' + ln.name)));
+      }
+    }
+    return h('div', { class: 'ro-field' }, h('div', { class: 'flabel' }, label), box);
+  }
+  function viewResume(id) {
+    const r = S.data.resumes.find((x) => x.id === id);
+    if (!r) { toast('找不到此專案履歷(可能已被刪除,或沒有權限)', 4000); replaceHash('#/'); showList(); return; }
+    editing = null;
+    showView('readView', { title: resumeTitle(r), sub: authorLine(r), back: '#/', link: true });
+    $('readNote').textContent = '🔒 唯讀檢視' + (canEdit(r) ? '(要修改請從首頁查詢後開啟)' : '');
+    const body = $('readBody');
+    body.innerHTML = '';
+    body.append(h('div', { class: 'panel' }, h('h3', { class: 'panel-title' }, '基本資料'),
+      h('div', { class: 'ro-grid' },
+        roField('專案代號', r.code), roField('專案名稱', r.name), roField('作業廠區', r.plant), roField('線別', r.line),
+        roField('設備名稱', r.equip), roField('單元', r.unit), roField('專案階段', r.stage),
+        roField('作業開始時間', fmtDT(r.start)), roField('作業結束時間', fmtDT(r.end)),
+        roField('報工時數', r.hours !== '' && r.hours != null ? r.hours + ' 小時' : ''), roField('協同作業人員', r.members),
+        roField('填表人', r.author)),
+      roField('工作內容', r.work)));
+    r.problems.forEach((p, i) => {
+      const any = ['problem', 'images', 'files', 'cause', 'temp', 'perm', 'result', 'note'].some((k) => String(p[k] || '').trim());
+      if (!any) return;
+      body.append(h('div', { class: 'panel problem' },
+        h('div', { class: 'panel-title row' }, h('span', {}, `問題 ${i + 1}`), p.remain ? h('span', { class: 'badge-remain' }, '已轉殘件') : null),
+        roField('問題描述', p.problem), roFiles('圖片', p.images, true), roFiles('附件', p.files, false),
+        roField('發生原因', p.cause), roField('暫定對策', p.temp), roField('永久對策', p.perm),
+        roField('處理結果', p.result), roField('備註', p.note)));
+    });
+  }
 
   $('deleteResume').onclick = async () => {
     const obj = editing.obj;
     if (editing.isNew) { editing.snapshot = JSON.stringify(obj); await discardEditing(); go('#/'); return; }
     if (!(await confirmYes('刪除專案履歷', `確定刪除「${resumeTitle(obj)}」?\n(已轉出的殘件項目會保留)`, '刪除', 'btn-danger'))) return;
     try {
-      await commit('刪除專案履歷…', (d) => { d.resumes = d.resumes.filter((r) => r.id !== obj.id); d.changed.add('resume'); });
+      await commit('刪除專案履歷…', (d) => {
+        const old = d.resumes.find((r) => r.id === obj.id);
+        if (old && !canEdit(old)) throw new Error('只有填表人或管理者可以刪除');
+        d.resumes = d.resumes.filter((r) => r.id !== obj.id);
+        d.changed.add('resume');
+      });
     } catch (err) { return toast('刪除失敗:' + errMsg(err), 6000); }
     editing = null;
     toast('已刪除');
@@ -798,7 +922,7 @@
           return {
             id: Store.newId('RI'), saved: true, date: String(res.start || '').slice(0, 10) || todayISO(), code: res.code, name: res.name,
             problem: p.problem, cause: p.cause, temp: p.temp, perm: p.perm, ecn: '', dept: '', owner: '', due: '', progress: '',
-            status: 'Open', note: '', files: [p.images, p.files].filter(Boolean).join('\n'), src: `${res.id} #${i + 1}`,
+            status: 'Open', note: '', files: [p.images, p.files].filter(Boolean).join('\n'), src: `${res.id} #${i + 1}`, author: myName(), authorEmail: myEmail(),
           };
         });
         d.remains.push(...items);
@@ -827,7 +951,7 @@
     if (code && !projects.some(([c]) => c === code) && p == null) code = '';
     const sel = $('rProject');
     sel.innerHTML = '';
-    sel.append(h('option', { value: '' }, `全部專案(${S.data.remains.length})`));
+    sel.append(h('option', { value: '' }, '請選擇專案…'));
     for (const [c, n] of projects) {
       const cnt = S.data.remains.filter((r) => r.code === c).length;
       sel.append(h('option', { value: c }, `${c} ${n}(${cnt})`));
@@ -840,16 +964,22 @@
   }
   function currentRemains() {
     const code = $('rProject').value, st = $('rStatus').value;
-    return S.data.remains.filter((r) => (!code || r.code === code) && (!st || (r.status || 'Open') === st))
+    if (!code) return [];
+    return S.data.remains.filter((r) => r.code === code && (!st || (r.status || 'Open') === st))
       .sort((a, b) => (a.status === 'Close') - (b.status === 'Close') || String(b.date || '').localeCompare(String(a.date || '')));
   }
   function renderRemainList() {
     const items = currentRemains();
     const box = $('remainList');
     box.innerHTML = '';
+    // 殘件頁不列出全部項目:選擇專案後才顯示
+    const chosen = !!$('rProject').value;
+    $('remainHint').hidden = chosen;
+    $('exportRemain').disabled = !chosen;
+    if (!chosen) { $('remainEmpty').hidden = true; $('remainCount').textContent = ''; return; }
     for (const r of items) {
       const st = r.status || 'Open';
-      box.append(h('a', { class: 'card' + (st === 'Close' ? ' closed' : ''), href: '#/remain/' + encodeURIComponent(r.id) },
+      box.append(h('a', { class: 'card' + (st === 'Close' ? ' closed' : '') + (canEdit(r) ? '' : ' readonly'), href: '#/remain/' + encodeURIComponent(r.id) },
         h('div', { class: 'card-top' },
           h('span', { class: 'status st-' + st.toLowerCase() }, st),
           h('span', { class: 'date' }, fmtDate(r.date)),
@@ -860,7 +990,8 @@
         h('div', { class: 'card-foot' },
           r.owner ? h('span', {}, '👤 ' + r.owner) : null,
           r.dept ? h('span', {}, r.dept) : null,
-          r.due ? h('span', { class: isOverdue(r) ? 'overdue' : '' }, '期限 ' + fmtDate(r.due) + (isOverdue(r) ? '(逾期)' : '')) : null)));
+          r.due ? h('span', { class: isOverdue(r) ? 'overdue' : '' }, '期限 ' + fmtDate(r.due) + (isOverdue(r) ? '(逾期)' : '')) : null,
+          r.author ? h('span', { class: 'author' }, (canEdit(r) ? '' : '🔒 ') + '填表 ' + r.author) : null)));
     }
     $('remainEmpty').hidden = items.length > 0;
     const open = items.filter((r) => (r.status || 'Open') !== 'Close').length;
@@ -897,17 +1028,35 @@
     if (id === 'new') {
       isNew = true;
       const proj = p ? lists().projects.find((x) => x.code === p) || S.data.remains.find((x) => x.code === p) : null;
-      obj = { id: Store.newId('RI'), saved: true, date: todayISO(), code: p || '', name: proj ? proj.name || '' : '', problem: '', cause: '', temp: '', perm: '', ecn: '', dept: '', owner: '', due: '', progress: '', status: 'Open', note: '', files: '', src: '' };
+      obj = { id: Store.newId('RI'), saved: true, date: todayISO(), code: p || '', name: proj ? proj.name || '' : '', problem: '', cause: '', temp: '', perm: '', ecn: '', dept: '', owner: '', due: '', progress: '', status: 'Open', note: '', files: '', src: '', author: myName(), authorEmail: myEmail() };
     } else {
       const r = S.data.remains.find((x) => x.id === id);
       if (!r) { toast('找不到此殘件項目(可能已被刪除,或請重新載入)', 4000); replaceHash('#/remain'); showRemainList(); return; }
+      if (!canEdit(r)) { viewRemain(r); return; }
       obj = clone(r);
     }
     editing = { type: 'remain', obj, snapshot: JSON.stringify(obj), isNew, uploads: [] };
     const back = '#/remain' + (obj.code ? '?p=' + encodeURIComponent(obj.code) : '');
-    showView('remainEditView', { title: isNew ? '新增殘件' : '殘件項目', sub: [obj.code, obj.name].filter(Boolean).join(' '), back, save: true });
+    showView('remainEditView', { title: isNew ? '新增殘件' : '殘件項目', sub: [obj.code, obj.name, authorLine(obj)].filter(Boolean).join(' · '), back, save: true });
     renderRemainForm();
     markDirty();
+  }
+  // 沒有修改權限的殘件 → 唯讀
+  function viewRemain(r) {
+    editing = null;
+    showView('readView', { title: '殘件項目', sub: [r.code, r.name, authorLine(r)].filter(Boolean).join(' · '), back: '#/remain' + (r.code ? '?p=' + encodeURIComponent(r.code) : '') });
+    $('readNote').textContent = '🔒 唯讀檢視(只有填表人或管理者可以修改)';
+    const srcId = (/^(\S+)/.exec(r.src || '') || [])[1];
+    const srcResume = srcId && S.data.resumes.find((x) => x.id === srcId);
+    const body = $('readBody');
+    body.innerHTML = '';
+    body.append(h('div', { class: 'panel' },
+      h('div', { class: 'ro-grid' },
+        roField('日期', fmtDate(r.date)), roField('狀態', r.status || 'Open'), roField('專案代號', r.code), roField('專案名稱', r.name),
+        roField('ECN', r.ecn), roField('權責區分', r.dept), roField('負責人', r.owner), roField('改善期限', fmtDate(r.due)), roField('填表人', r.author)),
+      roField('問題描述', r.problem), roField('發生原因', r.cause), roField('暫定對策', r.temp), roField('永久對策', r.perm),
+      roField('改善進度及結果', r.progress), roFiles('附件', r.files, false), roField('備註', r.note),
+      srcResume ? h('div', { class: 'ro-field' }, h('div', { class: 'flabel' }, '來源'), h('a', { href: '#/v/' + encodeURIComponent(srcResume.id), class: 'src-link' }, resumeTitle(srcResume))) : null));
   }
   function renderRemainForm() {
     const obj = editing.obj;
@@ -931,7 +1080,7 @@
       fFiles('附件', obj, 'files', { prefix: () => obj.code || obj.name }),
       fText('備註', obj, 'note', { multi: true }),
       obj.src ? h('div', { class: 'field' }, h('span', { class: 'flabel' }, '來源'),
-        srcResume ? h('a', { href: '#/r/' + encodeURIComponent(srcResume.id), class: 'src-link' }, `${resumeTitle(srcResume)}(${obj.src.split(' ').slice(1).join(' ')})`)
+        srcResume ? h('a', { href: (canEdit(srcResume) ? '#/r/' : '#/v/') + encodeURIComponent(srcResume.id), class: 'src-link' }, `${resumeTitle(srcResume)}(${obj.src.split(' ').slice(1).join(' ')})`)
           : h('span', { class: 'hint' }, obj.src)) : null,
     );
   }
@@ -944,6 +1093,7 @@
       await commit('儲存殘件項目…', (d) => {
         d.changed.add('remain');
         const i = d.remains.findIndex((r) => r.id === rec.id);
+        if (i >= 0 && !canEdit(d.remains[i])) throw new Error('只有填表人或管理者可以修改這筆殘件');
         if (i >= 0) d.remains[i] = rec;
         else if (editing.isNew) d.remains.push(rec);
         else throw new Error('雲端上的這筆殘件已被刪除或在 Excel 中被修改,無法對應;請重新載入後再編輯');
@@ -955,7 +1105,7 @@
     editing.obj = clone(rec);
     editing.snapshot = JSON.stringify(editing.obj);
     replaceHash('#/remain/' + encodeURIComponent(rec.id));
-    setTitle('殘件項目', [rec.code, rec.name].filter(Boolean).join(' '));
+    setTitle('殘件項目', [rec.code, rec.name, authorLine(rec)].filter(Boolean).join(' · '));
     $('backBtn').dataset.to = '#/remain?p=' + encodeURIComponent(rec.code);
     renderRemainForm(); // 欄位改綁到存檔後的新物件
     markDirty();
@@ -968,7 +1118,12 @@
     if (editing.isNew) { editing.snapshot = JSON.stringify(obj); await discardEditing(); go(back); return; }
     if (!(await confirmYes('刪除殘件項目', `確定刪除這筆殘件?\n${String(obj.problem || '').slice(0, 60)}`, '刪除', 'btn-danger'))) return;
     try {
-      await commit('刪除殘件項目…', (d) => { d.remains = d.remains.filter((r) => r.id !== obj.id); d.changed.add('remain'); });
+      await commit('刪除殘件項目…', (d) => {
+        const old = d.remains.find((r) => r.id === obj.id);
+        if (old && !canEdit(old)) throw new Error('只有填表人或管理者可以刪除');
+        d.remains = d.remains.filter((r) => r.id !== obj.id);
+        d.changed.add('remain');
+      });
     } catch (err) { return toast('刪除失敗:' + errMsg(err), 6000); }
     editing = null;
     toast('已刪除');

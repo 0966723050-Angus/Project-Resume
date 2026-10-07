@@ -61,6 +61,7 @@
         <label><input id="fTo" type="date" aria-label="作業日期迄"></label>
       </div>
       <div id="listCount" class="count-line"></div>
+      <div id="listHint" class="search-hint">🔍 請輸入專案代號(或從 ▾ 選擇)、或選擇作業日期來查詢專案履歷;<br>按右下「＋ 新增」建立新的專案履歷。</div>
       <div id="resumeList" class="card-list"></div>
       <div id="listEmpty" class="empty" hidden>沒有符合的專案履歷</div>
       <button id="addResume" class="fab" type="button">＋ 新增</button>
@@ -82,6 +83,12 @@
       </form>
     </section>
 
+    <!-- 唯讀檢視(分享連結 / 無修改權限) -->
+    <section id="readView" class="view" hidden>
+      <div id="readNote" class="read-note"></div>
+      <div id="readBody"></div>
+    </section>
+
     <!-- 殘件項目列表 -->
     <section id="remainView" class="view" hidden>
       <div class="filter-bar">
@@ -95,8 +102,9 @@
         <button id="exportRemain" class="btn btn-ghost btn-sm" type="button">⬇️ 匯出 Excel</button>
       </div>
       <div id="remainCount" class="count-line"></div>
+      <div id="remainHint" class="search-hint">🔍 請先從上方選單選擇專案,即可查看、匯出該專案的殘件項目。</div>
       <div id="remainList" class="card-list"></div>
-      <div id="remainEmpty" class="empty" hidden>此專案沒有殘件項目</div>
+      <div id="remainEmpty" class="empty" hidden>此專案沒有符合的殘件項目</div>
     </section>
 
     <!-- 殘件編輯 -->

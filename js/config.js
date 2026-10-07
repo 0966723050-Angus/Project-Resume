@@ -36,6 +36,8 @@ window.APP_CONFIG = {
     { key: 'note', title: '備註', kind: 'w', prob: true },
     { key: 'id', title: '履歷編號', kind: 'c' },
     { key: 'remain', title: '轉殘件', kind: 'c', prob: true },
+    { key: 'author', title: '填表人', kind: 'c' },
+    { key: 'authorEmail', title: '填表人Email', kind: 'c' },
   ],
 
   // 「Remain Item」工作表
@@ -58,7 +60,12 @@ window.APP_CONFIG = {
     { key: 'files', title: '附件', kind: 'w' },
     { key: 'src', title: '來源履歷', kind: 'c' },
     { key: 'id', title: '殘件編號', kind: 'c' },
+    { key: 'author', title: '填表人', kind: 'c' },
+    { key: 'authorEmail', title: '填表人Email', kind: 'c' },
   ],
+
+  // 已建立的專案履歷/殘件:只有管理者與填表人可修改(其他人唯讀)
+  ADMINS: ['0966723050@atk.com.tw'],
 
   // 「Choice」工作表:下拉選單預設值(標題 → 清單代號)
   CHOICE_SHEET: 'Choice',
