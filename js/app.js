@@ -149,6 +149,11 @@
     return { parts: path.split('/').filter(Boolean).map(decodeURIComponent), q: new URLSearchParams(qs || '') };
   }
   function route() {
+    // 分享連結:尚未登入時經由 Apps Script 直接檢視(不需登入)
+    if (!S.ready && CFG.SHARE_URL && !Drive.isSignedIn()) {
+      const { parts, q } = parseHash();
+      if (parts[0] === 'v' && parts[1]) { publicView(parts[1], q.get('k')); return; }
+    }
     if (!S.ready) {
       showView('welcome', { title: 'ATK專案履歷' });
       const { parts } = parseHash();
@@ -522,7 +527,7 @@
   const thumbCache = new Map();
   function loadThumb(img, id) {
     if (!id) return;
-    if (!thumbCache.has(id)) thumbCache.set(id, Drive.media(id).then((b) => URL.createObjectURL(b)));
+    if (!thumbCache.has(id)) thumbCache.set(id, (S.public ? publicFile(id) : Drive.media(id)).then((b) => URL.createObjectURL(b)));
     thumbCache.get(id).then((u) => { img.src = u; }).catch(() => { thumbCache.delete(id); img.alt = '無法載入'; img.classList.add('broken'); });
   }
   function openLightbox(link) {
@@ -664,7 +669,7 @@
     let obj, isNew = false;
     if (id === 'new') {
       isNew = true;
-      obj = { id: Store.newId('PR'), saved: true, code: '', name: '', plant: '', line: '', equip: '', unit: '', stage: '', start: nowRounded(), end: '', hours: '', members: '', work: '', problems: [blankProblem()], author: myName(), authorEmail: myEmail() };
+      obj = { id: Store.newId('PR'), saved: true, code: '', name: '', plant: '', line: '', equip: '', unit: '', stage: '', start: nowRounded(), end: '', hours: '', members: '', work: '', problems: [blankProblem()], author: myName(), authorEmail: myEmail(), shareKey: newShareKey() };
     } else {
       const r = S.data.resumes.find((x) => x.id === id);
       if (!r) { toast('找不到此專案履歷(可能已被刪除,或請重新載入)', 4000); replaceHash('#/'); showList(); return; }
@@ -673,7 +678,8 @@
       obj = clone(r);
       if (!obj.problems.length) obj.problems.push(blankProblem());
     }
-    editing = { type: 'resume', obj, snapshot: JSON.stringify(obj), isNew, uploads: [] };
+    editing = { type: 'resume', obj, snapshot: JSON.stringify(obj), isNew, createdHere: isNew, uploads: [] };
+    $('deleteResume').hidden = !isAdmin() || isNew;
     showView('resumeView', { title: resumeTitle(obj), sub: authorLine(obj) + (isNew ? '(新增)' : ''), back: '#/', save: true, link: true });
     renderResumeForm();
     markDirty();
@@ -778,6 +784,7 @@
     editing.obj = clone(res);
     editing.snapshot = JSON.stringify(editing.obj);
     replaceHash('#/r/' + encodeURIComponent(res.id));
+    $('deleteResume').hidden = !isAdmin();
     setTitle(resumeTitle(res), authorLine(res));
     renderResumeForm();
     markDirty();
@@ -787,9 +794,26 @@
 
   // 複製連結(尚未儲存時先儲存):剪貼簿同時放「標題 + 連結」文字與超連結格式,
   // 貼到 LINE/Teams/Email 都會看到「日期 專案代號 專案名稱 專案履歷」;連結開啟為唯讀
-  const shareUrl = (id) => location.origin + location.pathname + '#/v/' + encodeURIComponent(id);
+  // 連結帶「分享碼」:不需登入即可經由 Apps Script 檢視(分享碼不符則拒絕)
+  const newShareKey = () => Array.from(crypto.getRandomValues(new Uint8Array(9)), (b) => (b % 36).toString(36)).join('');
+  const shareUrl = (r) => location.origin + location.pathname + '#/v/' + encodeURIComponent(r.id) + (r.shareKey ? '?k=' + r.shareKey : '');
+  // 舊履歷沒有分享碼時補上(只寫分享碼,不改其他內容)
+  async function ensureShareKey(r) {
+    if (r.shareKey) return r;
+    const key = newShareKey();
+    let out = r;
+    await commit('產生分享連結…', (d) => {
+      const x = d.resumes.find((y) => y.id === r.id);
+      if (!x) throw new Error('找不到這份專案履歷,請重新載入');
+      x.shareKey = x.shareKey || key;
+      if (!x.saved) { x.id = Store.newId('PR'); x.saved = true; }
+      d.changed.add('resume');
+      out = x;
+    });
+    return out;
+  }
   async function copyLink(r) {
-    const url = shareUrl(r.id);
+    const url = shareUrl(r);
     const title = resumeTitle(r);
     const text = `${title}\n${url}`;
     try {
@@ -823,11 +847,18 @@
         if (!(await confirmYes('複製連結', '需要先儲存這份專案履歷,才能產生連結。', '儲存並複製'))) return;
         if (!(await saveResume())) return;
       }
+      if (!editing.obj.shareKey) {
+        try { const r = await ensureShareKey(editing.obj); afterResumeSaved(r); } catch (err) { return toast(errMsg(err), 5000); }
+      }
       return copyLink(editing.obj);
     }
     const { parts } = parseHash();
-    const r = parts[0] === 'v' && S.data.resumes.find((x) => x.id === parts[1]);
-    if (r) copyLink(r);
+    if (S.public) return copyLink(S.public.resume);
+    let r = parts[0] === 'v' && S.data.resumes.find((x) => x.id === parts[1]);
+    if (!r) return;
+    try { r = await ensureShareKey(r); } catch (err) { return toast(errMsg(err), 5000); }
+    replaceHash('#/v/' + encodeURIComponent(r.id) + '?k=' + r.shareKey);
+    copyLink(r);
   };
 
   // ---------- 唯讀檢視(分享連結 / 沒有修改權限) ----------
@@ -845,7 +876,9 @@
         loadThumb(img, ln.id);
         box.append(h('div', { class: 'thumb', title: ln.name, onclick: () => (ln.id ? openLightbox(ln) : null) }, img));
       } else {
-        box.append(h('div', { class: 'attach' }, ln.url ? h('a', { href: ln.url, target: '_blank', rel: 'noopener' }, '📎 ' + ln.name) : h('span', {}, '📎 ' + ln.name)));
+        const a = ln.url ? h('a', { href: ln.url, target: '_blank', rel: 'noopener' }, '📎 ' + ln.name) : h('span', {}, '📎 ' + ln.name);
+        if (S.public && ln.id) a.onclick = (e) => { e.preventDefault(); publicDownload(ln); };
+        box.append(h('div', { class: 'attach' }, a));
       }
     }
     return h('div', { class: 'ro-field' }, h('div', { class: 'flabel' }, label), box);
@@ -853,9 +886,13 @@
   function viewResume(id) {
     const r = S.data.resumes.find((x) => x.id === id);
     if (!r) { toast('找不到此專案履歷(可能已被刪除,或沒有權限)', 4000); replaceHash('#/'); showList(); return; }
+    renderResumeRead(r);
+  }
+  function renderResumeRead(r) {
     editing = null;
-    showView('readView', { title: resumeTitle(r), sub: authorLine(r), back: '#/', link: true });
-    $('readNote').textContent = '🔒 唯讀檢視' + (canEdit(r) ? '(要修改請從首頁查詢後開啟)' : '');
+    showView('readView', { title: resumeTitle(r), sub: authorLine(r), back: S.public ? null : '#/', link: true });
+    if (S.public) { $('menuBtn').hidden = true; }
+    $('readNote').textContent = '🔒 唯讀檢視' + (S.public ? '' : canEdit(r) ? '(要修改請從首頁查詢後開啟)' : '');
     const body = $('readBody');
     body.innerHTML = '';
     body.append(h('div', { class: 'panel' }, h('h3', { class: 'panel-title' }, '基本資料'),
@@ -877,14 +914,83 @@
     });
   }
 
+  // ---------- 分享連結免登入檢視(經由 Apps Script) ----------
+  async function gasGet(params) {
+    const url = CFG.SHARE_URL + '?' + new URLSearchParams(params).toString();
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('讀取失敗(' + resp.status + ')');
+    const j = await resp.json();
+    if (!j.ok) throw new Error(j.error || '讀取失敗');
+    return j;
+  }
+  async function publicView(id, key) {
+    busy('讀取專案履歷…');
+    try {
+      const j = await gasGet({ id, k: key || '' });
+      j.resume.shareKey = key;
+      S.public = { id, key, resume: j.resume };
+      renderResumeRead(j.resume);
+      $('subLine').textContent = authorLine(j.resume) + ' · 免登入檢視';
+    } catch (err) {
+      showView('welcome', { title: 'ATK專案履歷' });
+      $('welcomeMsg').textContent = '無法開啟分享的專案履歷:' + errMsg(err) + '。可登入後再試。';
+    } finally { busy(''); }
+  }
+  function b64ToBlob(b64, mime) {
+    const bin = atob(b64);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return new Blob([u8], { type: mime || 'application/octet-stream' });
+  }
+  const publicFile = (fid) => gasGet({ a: 'file', id: S.public.id, k: S.public.key || '', f: fid }).then((j) => b64ToBlob(j.data, j.mime));
+  async function publicDownload(ln) {
+    busy('下載附件…');
+    try {
+      const blob = await publicFile(ln.id);
+      const a = h('a', { href: URL.createObjectURL(blob), download: ln.name });
+      document.body.append(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    } catch (err) { toast(errMsg(err), 5000); } finally { busy(''); }
+  }
+
+  // 放棄編輯:這次新建的履歷 → 連同已儲存的內容一起刪除;既有履歷 → 放棄尚未儲存的修改
+  $('abandonResume').onclick = async () => {
+    const obj = editing.obj;
+    const saved = S.data.resumes.some((r) => r.id === obj.id);
+    if (editing.createdHere && saved) {
+      const rms = S.data.remains.filter((r) => String(r.src || '').startsWith(obj.id + ' '));
+      const msg = `這份專案履歷是這次新建立的,放棄編輯會把已儲存到 Excel 的這份履歷一併刪除` +
+        (rms.length ? `,並刪除由它轉出的 ${rms.length} 筆殘件項目` : '') + '。\n確定放棄?';
+      if (!(await confirmYes('放棄編輯', msg, '放棄並刪除', 'btn-danger'))) return;
+      try {
+        await commit('刪除專案履歷…', (d) => {
+          d.resumes = d.resumes.filter((r) => r.id !== obj.id);
+          d.changed.add('resume');
+          const before = d.remains.length;
+          d.remains = d.remains.filter((r) => !String(r.src || '').startsWith(obj.id + ' '));
+          if (d.remains.length !== before) d.changed.add('remain');
+        });
+      } catch (err) { return toast('放棄失敗:' + errMsg(err), 6000); }
+    } else {
+      const msg = editing.createdHere ? '確定放棄這份尚未儲存的專案履歷?' : (isDirty() ? '確定放棄尚未儲存的修改?(已儲存的內容不受影響)' : '確定離開編輯?');
+      if (!(await confirmYes('放棄編輯', msg, '放棄', 'btn-danger'))) return;
+    }
+    editing.snapshot = JSON.stringify(editing.obj); // 不再提示未儲存
+    await discardEditing();
+    toast('已放棄編輯');
+    go('#/');
+  };
+
+  // 刪除:只有管理者
   $('deleteResume').onclick = async () => {
     const obj = editing.obj;
+    if (!isAdmin()) return toast('只有管理者可以刪除專案履歷');
     if (editing.isNew) { editing.snapshot = JSON.stringify(obj); await discardEditing(); go('#/'); return; }
     if (!(await confirmYes('刪除專案履歷', `確定刪除「${resumeTitle(obj)}」?\n(已轉出的殘件項目會保留)`, '刪除', 'btn-danger'))) return;
     try {
       await commit('刪除專案履歷…', (d) => {
-        const old = d.resumes.find((r) => r.id === obj.id);
-        if (old && !canEdit(old)) throw new Error('只有填表人或管理者可以刪除');
+        if (!isAdmin()) throw new Error('只有管理者可以刪除專案履歷');
         d.resumes = d.resumes.filter((r) => r.id !== obj.id);
         d.changed.add('resume');
       });
@@ -1142,7 +1248,9 @@
       h('div', {}, h('b', {}, S.user ? S.user.displayName : ''), ' ', h('span', { class: 'hint' }, S.user ? S.user.emailAddress : '')),
       h('div', { class: 'hint' }, `${CFG.FILE_NAME}:${m.modifiedTime ? new Date(m.modifiedTime).toLocaleString('zh-TW') : ''}${who ? ' 由 ' + who + ' 更新' : ''}` +
         (m.capabilities && m.capabilities.canEdit === false ? '(此帳號只有檢視權限)' : '')),
-      h('div', { class: 'hint' }, `專案履歷 ${S.data.resumes.length} 份、殘件 ${S.data.remains.length} 筆`));
+      h('div', { class: 'hint' }, `專案履歷 ${S.data.resumes.length} 份、殘件 ${S.data.remains.length} 筆`),
+      h('div', { class: 'hint' }, `檔案 ID(供分享連結 Apps Script 的 FILE_ID):${S.fileId || ''}`),
+      h('div', { class: 'hint' }, CFG.SHARE_URL ? '分享連結:免登入檢視已啟用' : '分享連結:尚未設定 SHARE_URL,開啟連結需登入'));
     renderListEditors();
   }
   function renderListEditors() {

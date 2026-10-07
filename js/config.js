@@ -38,6 +38,7 @@ window.APP_CONFIG = {
     { key: 'remain', title: '轉殘件', kind: 'c', prob: true },
     { key: 'author', title: '填表人', kind: 'c' },
     { key: 'authorEmail', title: '填表人Email', kind: 'c' },
+    { key: 'shareKey', title: '分享碼', kind: 'c' },
   ],
 
   // 「Remain Item」工作表
@@ -81,6 +82,10 @@ window.APP_CONFIG = {
   ],
   ECN_OPTIONS: ['是', '否'],
   STATUS_OPTIONS: ['Open', 'Close'],
+
+  // 分享連結免登入檢視:Google Apps Script 網頁應用程式網址(gas/Code.gs,以管理者身分讀取 Excel,
+  // 只回傳連結指定、且分享碼相符的那份履歷)。留空時,開啟分享連結仍需登入。
+  SHARE_URL: '',
 
   // 程式版本(部署時由 GitHub Actions 換成 commit 代碼);與網站上的 version.json 不同時強制重新載入
   APP_VERSION: '__BUILD_VERSION__',
