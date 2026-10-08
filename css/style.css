@@ -313,3 +313,5 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 .quick-dates { display: flex; gap: 8px; align-items: center; margin: 2px 0 6px; }
 .qd-label { font-size: 13px; color: var(--muted); margin-right: 2px; }
 .quick-dates .btn { flex: 0 0 auto; min-width: 72px; }
+/* 工作內容:初始高度為一般多行欄位的 2 倍 */
+.field textarea.ta-work { min-height: 128px; }

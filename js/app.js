@@ -345,8 +345,8 @@
     return h('label', { class: 'field' }, h('span', { class: 'flabel' }, label), control, extra || null);
   }
   // 一般文字 / 多行文字
-  function fText(label, obj, key, { multi = false, onChange, type = 'text', inputmode } = {}) {
-    const el = multi ? h('textarea', { rows: 2 }) : h('input', { type, inputmode });
+  function fText(label, obj, key, { multi = false, onChange, type = 'text', inputmode, cls } = {}) {
+    const el = multi ? h('textarea', { rows: 2, class: cls }) : h('input', { type, inputmode });
     el.value = obj[key] ?? '';
     el.addEventListener('input', () => {
       obj[key] = el.value;
@@ -599,7 +599,7 @@
     const sel = $('fCodeSel');
     sel.innerHTML = '';
     sel.append(h('option', { value: '' }, '選擇專案…'));
-    for (const [c, n] of [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))) sel.append(h('option', { value: `${c} ${n}`.trim() }, `${c} ${n}`.trim()));
+    for (const [c, n] of [...map.entries()].sort((a, b) => Store.compareCode(a[0], b[0]))) sel.append(h('option', { value: `${c} ${n}`.trim() }, `${c} ${n}`.trim()));
   }
   function renderList() {
     const code = $('fCode').value.trim().toLowerCase();
@@ -723,7 +723,7 @@
       fDate('作業結束時間', obj, 'end', { time: true, onChange: calcHours }),
       hoursF,
       fMembers(obj),
-      fText('工作內容', obj, 'work', { multi: true }),
+      fText('工作內容', obj, 'work', { multi: true, cls: 'ta-work' }),
     );
     box.lastChild.classList.add('span2');
     renderProblems();
@@ -1069,7 +1069,7 @@
     const map = new Map();
     for (const r of S.data.remains) if (r.code && !map.has(r.code)) map.set(r.code, r.name || '');
     for (const p of lists().projects) if (p.code && map.has(p.code) && !map.get(p.code)) map.set(p.code, p.name);
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    return [...map.entries()].sort((a, b) => Store.compareCode(a[0], b[0]));
   }
   function showRemainList(p) {
     const projects = remainProjects();

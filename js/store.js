@@ -65,6 +65,25 @@
     return h.toString(36);
   }
 
+  // 專案代號排序:前 2 碼(EQ/MD/ST/AF…)相同的放一起,依 EQ→MD→ST→AF→其他(字母序);
+  // 同類型依後段數字(年份 2 碼 + 流水號,例 EQ-2260008)由舊到新
+  const CODE_ORDER = ['EQ', 'MD', 'ST', 'AF'];
+  function compareCode(a, b) {
+    const pa = String(a || '').trim().toUpperCase(), pb = String(b || '').trim().toUpperCase();
+    if (!pa || !pb) return pa ? -1 : pb ? 1 : 0; // 沒有代號的排最後
+    const ta = pa.slice(0, 2), tb = pb.slice(0, 2);
+    if (ta !== tb) {
+      const ia = CODE_ORDER.indexOf(ta), ib = CODE_ORDER.indexOf(tb);
+      if (ia !== ib) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || ta.localeCompare(tb);
+      return ta.localeCompare(tb);
+    }
+    const na = pa.replace(/^[A-Z]+-?/, ''), nb = pb.replace(/^[A-Z]+-?/, '');
+    const da = /^\d+$/.test(na) ? Number(na) : NaN, db = /^\d+$/.test(nb) ? Number(nb) : NaN;
+    if (!isNaN(da) && !isNaN(db) && da !== db) return da - db;
+    return na.localeCompare(nb, 'en', { numeric: true });
+  }
+  const sortProjects = (arr) => arr.sort((x, y) => compareCode(x.code, y.code));
+
   // ---------- 活頁簿 ----------
   class Book {
     constructor(bytes) {
@@ -339,6 +358,7 @@
           if (v && !lists[key].includes(v)) lists[key].push(v);
         }
       }
+      sortProjects(lists.projects);
       return { lists, colOf };
     }
 
@@ -347,6 +367,7 @@
       const { doc, sheetData, rows } = this.rowsOf(CFG.CHOICE_SHEET);
       const widths = this.colWidths(doc);
       for (const row of rows) if (row.r >= 2) sheetData.removeChild(row.el);
+      sortProjects(lists.projects);
       const colLists = [];
       if (colOf.code) colLists.push([colOf.code, lists.projects.map((p) => p.code)]);
       if (colOf.name) colLists.push([colOf.name, lists.projects.map((p) => p.name)]);
@@ -473,5 +494,5 @@
     return book.toBytes();
   }
 
-  window.Store = { Book, readAll, writeAll, newId, serialToDT, dtToSerial, normDT };
+  window.Store = { compareCode, Book, readAll, writeAll, newId, serialToDT, dtToSerial, normDT };
 })();
