@@ -1052,7 +1052,7 @@
           return {
             id: Store.newId('RI'), saved: true, date: String(res.start || '').slice(0, 10) || todayISO(), code: res.code, name: res.name,
             problem: p.problem, cause: p.cause, temp: p.temp, perm: p.perm, ecn: '', dept: '', owner: '', due: '', progress: '',
-            status: 'Open', note: '', files: [res.images, res.files].filter(Boolean).join('\n'), src: `${res.id} #${i + 1}`, author: myName(), authorEmail: myEmail(),
+            status: 'Open', note: '', files: '', src: `${res.id} #${i + 1}`, author: myName(), authorEmail: myEmail(),
           };
         });
         d.remains.push(...items);
