@@ -1414,11 +1414,24 @@
     sel.addEventListener('change', () => { obj[stKey] = sel.value; paint(); markDirty(); });
     return h('div', { class: 'field' }, h('span', { class: 'flabel' }, label), h('div', { class: 'ds-row' }, date, sel));
   }
+  // 殘件鍵:顯示此專案代號的殘件筆數,按下切到殘件項目頁(已選好此專案)
+  function updatePmRemainBtn() {
+    const code = String((editing && editing.obj.code) || '').trim();
+    const b = $('pmRemainBtn');
+    const list = code ? S.data.remains.filter((r) => r.code === code) : [];
+    const open = list.filter((r) => (r.status || 'Open') !== 'Close').length;
+    b.disabled = !code;
+    b.textContent = code ? `🧩 殘件項目(Open ${open} / 共 ${list.length})` : '🧩 殘件項目(請先填專案代號)';
+  }
+  $('pmRemainBtn').onclick = () => {
+    const code = String(editing.obj.code || '').trim();
+    if (code) go('#/remain?p=' + encodeURIComponent(code));
+  };
   const pmTitle = (o, isNew) => (isNew && !o.code ? '新增專案' : [o.code, o.name].filter(Boolean).join(' ') + ' 專案管理');
 
   function renderPmForm() {
     const obj = editing.obj;
-    const upTitle = () => setTitle(pmTitle(obj, editing.isNew), pmFileLine());
+    const upTitle = () => { setTitle(pmTitle(obj, editing.isNew), pmFileLine()); updatePmRemainBtn(); };
     // 專案代號 → 帶入專案名稱與年度
     const findName = (code) => {
       const c = String(code || '').trim().toLowerCase();
@@ -1458,6 +1471,7 @@
     );
     for (const f of box.querySelectorAll('.pm-grid > .field')) if (f.querySelector('textarea')) f.classList.add('span2');
     renderPmTracks();
+    updatePmRemainBtn();
     const cb = $('pmClosedBox');
     cb.innerHTML = '';
     cb.append(fChips('結案', obj, 'closed', CFG.PM.CLOSED_OPTIONS));
