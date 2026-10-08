@@ -21,6 +21,8 @@
       <h1 id="pageTitle">ATK專案履歷</h1>
       <div id="subLine" class="file-line"></div>
     </div>
+    <button id="prevBtn" class="icon-btn nav-btn" type="button" aria-label="上一個" title="上一個" hidden>‹</button>
+    <button id="nextBtn" class="icon-btn nav-btn" type="button" aria-label="下一個" title="下一個" hidden>›</button>
     <button id="linkBtn" class="icon-btn" type="button" aria-label="複製連結" title="複製此專案履歷的連結" hidden>🔗</button>
     <button id="saveBtn" class="btn btn-save" type="button" hidden>儲存</button>
   </header>
@@ -78,7 +80,6 @@
 
     <!-- 專案履歷編輯 -->
     <section id="resumeView" class="view" hidden>
-      <div id="resNav" class="rec-nav" hidden></div>
       <form id="resumeForm" autocomplete="off" onsubmit="return false">
         <div class="panel">
           <h3 class="panel-title">基本資料</h3>
@@ -96,7 +97,6 @@
 
     <!-- 唯讀檢視(分享連結 / 無修改權限) -->
     <section id="readView" class="view" hidden>
-      <div id="readNav" class="rec-nav" hidden></div>
       <div id="readNote" class="read-note"></div>
       <div id="readBody"></div>
     </section>
@@ -144,7 +144,6 @@
     </section>
 
     <section id="pmEditView" class="view" hidden>
-      <div id="pmNav" class="rec-nav" hidden></div>
       <form id="pmForm" autocomplete="off" onsubmit="return false">
         <div id="pmFields"></div>
         <div id="pmTracks"></div>

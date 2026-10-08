@@ -118,6 +118,7 @@
     $('backBtn').dataset.to = back || '';
     $('saveBtn').hidden = !save;
     $('linkBtn').hidden = !link;
+    hideNav();
     for (const a of document.querySelectorAll('[data-nav]')) {
       a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || (id.startsWith('pm') && a.dataset.nav === 'pm'));
     }
@@ -655,20 +656,24 @@
   }
 
   // 上一個 / 下一個:依目前查詢結果的順序切換
-  function renderNav(boxId, ids, cur, hrefOf) {
-    const box = $(boxId);
+  // 頁首「‹ ›」鍵(儲存鍵旁);不在查詢結果中或只有一筆時隱藏
+  function renderNav(ids, cur, hrefOf) {
     const i = ids.indexOf(cur);
-    box.innerHTML = '';
-    if (i < 0 || ids.length < 2) { box.hidden = true; return; }
-    box.hidden = false;
-    const btn = (text, id) => h('button', { type: 'button', class: 'btn btn-ghost btn-sm', disabled: id == null || null, onclick: () => go(hrefOf(id)) }, text);
-    box.append(btn('‹ 上一個', ids[i - 1]), h('span', { class: 'nav-pos' }, `${i + 1} / ${ids.length}`), btn('下一個 ›', ids[i + 1]));
+    const show = i >= 0 && ids.length > 1;
+    for (const [id, to, label] of [['prevBtn', ids[i - 1], '上一個'], ['nextBtn', ids[i + 1], '下一個']]) {
+      const b = $(id);
+      b.hidden = !show;
+      b.disabled = to == null;
+      b.title = `${label}(${i + 1} / ${ids.length})`;
+      b.onclick = () => { if (to != null) go(hrefOf(to)); };
+    }
   }
+  const hideNav = () => { $('prevBtn').hidden = true; $('nextBtn').hidden = true; };
   const resumeHref = (id) => {
     const r = S.data.resumes.find((x) => x.id === id);
     return (r && canEdit(r) ? '#/r/' : '#/v/') + encodeURIComponent(id);
   };
-  const renderResumeNav = (box, id) => renderNav(box, resumeResults().map((r) => r.id), id, resumeHref);
+  const renderResumeNav = (id) => renderNav(resumeResults().map((r) => r.id), id, resumeHref);
 
   let filterTimer;
   $('fCode').oninput = () => { clearTimeout(filterTimer); filterTimer = setTimeout(renderList, 150); };
@@ -717,7 +722,7 @@
     editing = { type: 'resume', obj, snapshot: JSON.stringify(obj), isNew, createdHere: isNew, uploads: [] };
     $('deleteResume').hidden = !isAdmin() || isNew;
     showView('resumeView', { title: resumeTitle(obj), sub: authorLine(obj) + (isNew ? '(新增)' : ''), back: '#/', save: true, link: true });
-    if (isNew) $('resNav').hidden = true; else renderResumeNav('resNav', obj.id);
+    if (!isNew) renderResumeNav(obj.id);
     renderResumeForm();
     markDirty();
   }
@@ -820,6 +825,7 @@
     editing.obj = clone(res);
     editing.snapshot = JSON.stringify(editing.obj);
     replaceHash('#/r/' + encodeURIComponent(res.id));
+    renderResumeNav(res.id);
     $('deleteResume').hidden = !isAdmin();
     setTitle(resumeTitle(res), authorLine(res));
     renderResumeForm();
@@ -932,7 +938,7 @@
   function renderResumeRead(r) {
     editing = null;
     showView('readView', { title: resumeTitle(r), sub: authorLine(r), back: S.public ? null : '#/', link: true });
-    if (S.public) { $('menuBtn').hidden = true; $('readNav').hidden = true; } else renderResumeNav('readNav', r.id);
+    if (S.public) $('menuBtn').hidden = true; else renderResumeNav(r.id);
     $('readNote').textContent = '🔒 唯讀檢視' + (S.public ? '' : canEdit(r) ? '(要修改請從首頁查詢後開啟)' : '');
     const body = $('readBody');
     body.innerHTML = '';
@@ -1363,7 +1369,7 @@
       .filter((r) => (!q || pmMatch(r, q)) && (!openOnly || r.closed !== '是'))
       .sort((a, b) => Store.compareCode(a.code, b.code) || (Number(a.batch) || 0) - (Number(b.batch) || 0) || a._row - b._row);
   }
-  const renderPmNav = (row) => renderNav('pmNav', pmResults().map((r) => r._row), row, (r) => '#/pm/' + r);
+  const renderPmNav = (row) => renderNav(pmResults().map((r) => r._row), row, (r) => '#/pm/' + r);
   let pmTimer;
   $('pmSearch').oninput = () => { clearTimeout(pmTimer); pmTimer = setTimeout(renderPmList, 150); };
   $('pmOpenOnly').onchange = renderPmList;
@@ -1388,7 +1394,7 @@
     editing = { type: 'pm', obj, snapshot: JSON.stringify(obj), isNew, uploads: [] };
     $('pmDelete').hidden = isNew;
     showView('pmEditView', { title: pmTitle(obj, isNew), sub: pmFileLine(), back: '#/pm', save: true });
-    if (isNew) $('pmNav').hidden = true; else renderPmNav(obj._row);
+    if (!isNew) renderPmNav(obj._row);
     renderPmForm();
     markDirty();
   }
@@ -1444,10 +1450,10 @@
       panel('基本資料', codeF, nameF, yearF,
         fText('產品品號', obj, 'part'), fText('訂單號碼', obj, 'order', { inputmode: 'numeric' }), fText('客戶單號', obj, 'custNo'),
         fText('批次', obj, 'batch', { inputmode: 'numeric' }), fText('數量', obj, 'qty', { inputmode: 'numeric' }),
-        fDate('需求日期', obj, 'needDate'), fCombo('階段', obj, 'stage', 'pmStage')),
+        fDate('需求日期', obj, 'needDate')),
       panel('人員', fText('客戶聯絡人', obj, 'contact'), fText('設計擔當人員', obj, 'design'), fText('電控擔當人員', obj, 'elec'),
         fText('軟體擔當人員', obj, 'soft'), fText('技術擔當人員', obj, 'tech')),
-      panel('進度', ...CFG.PM.PROGRESS.map((p) => fDateStatus(p.label, obj, p.date, p.st)),
+      panel('進度', fCombo('階段', obj, 'stage', 'pmStage'), ...CFG.PM.PROGRESS.map((p) => fDateStatus(p.label, obj, p.date, p.st)),
         fText('現況', obj, 'current', { multi: true }), fText('備註', obj, 'note', { multi: true })),
     );
     for (const f of box.querySelectorAll('.pm-grid > .field')) if (f.querySelector('textarea')) f.classList.add('span2');

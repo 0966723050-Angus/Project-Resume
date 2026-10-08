@@ -343,3 +343,6 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 .st-sel[data-st="進行中"] { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
 .st-sel[data-st="延遲"] { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
 .st-sel[data-st="已完成"] { background: #dcfce7; color: #166534; border-color: #86efac; }
+/* 頁首 上一個/下一個 */
+.app-header .nav-btn { width: 32px; font-size: 28px; line-height: 1; font-weight: 300; padding: 0 0 4px; }
+.app-header .nav-btn:disabled { opacity: .35; cursor: default; }
