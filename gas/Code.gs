@@ -3,6 +3,8 @@
  *
  * 部署:script.google.com 新增專案 → 貼上本檔 → 部署 → 新增部署作業 → 類型「網頁應用程式」
  *       執行身分:我(管理者)  /  誰可以存取:所有人  → 複製網址貼到 js/config.js 的 SHARE_URL
+ *       更新程式後:部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署(網址不變)
+ *       加速:在編輯器選函式 installWarmTrigger → 執行一次(建立每 10 分鐘預熱排程)
  * 安全:只回傳「履歷編號 + 分享碼」都相符的那一份履歷;圖片/附件也只限該履歷中有列出的檔案。
  *
  *   ?id=<履歷編號>&k=<分享碼>                → { ok, resume }
@@ -36,31 +38,65 @@ function json(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
 
+// 檔案:先用設定的 FILE_ID,其次用上次找到並記住的 ID,最後才依檔名搜尋(搜尋較慢)
 function getFile() {
   if (FILE_ID) return DriveApp.getFileById(FILE_ID);
+  var props = PropertiesService.getScriptProperties();
+  var saved = props.getProperty('FILE_ID');
+  if (saved) { try { var f0 = DriveApp.getFileById(saved); if (!f0.isTrashed()) return f0; } catch (err) { /* 找不到就重新搜尋 */ } }
   var it = DriveApp.searchFiles('title = "' + FILE_NAME + '" and trashed = false');
   if (!it.hasNext()) throw new Error('找不到 ' + FILE_NAME);
-  return it.next();
+  var f = it.next();
+  props.setProperty('FILE_ID', f.getId());
+  return f;
 }
 
-// 讀取「Project Resume」工作表的資料列(依檔案更新時間快取 5 分鐘)
-function loadRows() {
+// 依履歷編號讀取資料列。整份檔案解析一次後,每份履歷各自存入快取(6 小時,檔案更新後自動換新),
+// 之後開連結只要讀一筆快取,不必再解壓/解析 Excel
+var CACHE_SEC = 21600;
+function loadRowsById(id) {
   var f = getFile();
+  var ver = f.getId() + '_' + f.getLastUpdated().getTime();
   var cache = CacheService.getScriptCache();
-  var ck = 'rows_' + f.getId() + '_' + f.getLastUpdated().getTime();
-  var hit = cache.get(ck);
+  var hit = cache.get('r_' + ver + '_' + id);
   if (hit) return JSON.parse(hit);
+  if (cache.get('v_' + ver)) return []; // 這個版本已解析過且沒有此編號
+  var byId = buildCache(f, ver);
+  return byId[id] || [];
+}
+function buildCache(f, ver) {
   var parts = {};
   Utilities.unzip(f.getBlob().setContentType('application/zip')).forEach(function (b) { parts[b.getName()] = b; });
   var text = function (name) { return parts[name] ? parts[name].getDataAsString('UTF-8') : null; };
   var rows = parseSheet(text('xl/workbook.xml'), text('xl/_rels/workbook.xml.rels'), text('xl/sharedStrings.xml'), text, SHEET);
-  try { cache.put(ck, JSON.stringify(rows), 300); } catch (err) { /* 超過快取上限就不快取 */ }
-  return rows;
+  var byId = {};
+  rows.forEach(function (r) { if (r.id) (byId[r.id] = byId[r.id] || []).push(r); });
+  var cache = CacheService.getScriptCache();
+  var batch = {}, n = 0;
+  Object.keys(byId).forEach(function (id) {
+    batch['r_' + ver + '_' + id] = JSON.stringify(byId[id]);
+    if (++n % 200 === 0) { try { cache.putAll(batch, CACHE_SEC); } catch (err) {} batch = {}; }
+  });
+  try { cache.putAll(batch, CACHE_SEC); cache.put('v_' + ver, '1', CACHE_SEC); } catch (err) { /* 快取失敗不影響結果 */ }
+  return byId;
+}
+
+// 定時預熱(每 10 分鐘):先把最新版本解析進快取,開連結時就不用等解析
+function warm() {
+  var f = getFile();
+  var ver = f.getId() + '_' + f.getLastUpdated().getTime();
+  if (!CacheService.getScriptCache().get('v_' + ver)) buildCache(f, ver);
+}
+// 第一次部署後在編輯器手動執行一次:建立預熱排程
+function installWarmTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'warm') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('warm').timeBased().everyMinutes(10).create();
+  warm();
 }
 
 function findResume(id, key) {
   if (!id || !key) throw new Error('連結不完整');
-  var rows = loadRows().filter(function (r) { return r.id === id; });
+  var rows = loadRowsById(id);
   if (!rows.length) throw new Error('找不到此專案履歷');
   var sk = '';
   rows.forEach(function (r) { if (!sk && r.shareKey) sk = r.shareKey; });

@@ -348,3 +348,12 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 .app-header .nav-btn:disabled { opacity: .35; cursor: default; }
 .btn.wide.pm-remain { margin: 0 0 12px; }
 .btn.wide.back-pm { margin: 0 0 8px; }
+
+/* 唯讀檢視:字放大(手機/釘釘內開啟較好讀) */
+#readView .read-note { font-size: 15px; }
+#readView .panel-title { font-size: 18px; }
+#readView .flabel { font-size: 15px; }
+#readView .ro-val { font-size: 18px; line-height: 1.6; }
+#readView .ro-grid { gap: 14px 16px; }
+#readView .thumb { width: 120px; height: 120px; }
+#readView .attach { font-size: 16px; }

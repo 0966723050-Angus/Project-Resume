@@ -71,6 +71,9 @@
   圖片/附件也只限該履歷內列出的檔案
 - 部署:script.google.com 新增專案 → 貼上 `gas/Code.gs` → 部署 → 網頁應用程式(執行身分:我;存取:所有人)→ 網址填入 `js/config.js` 的 `SHARE_URL`
 - 已登入的人開啟連結時直接讀雲端硬碟
+- 加速:index.html 一開啟就先送出 Apps Script 請求(不等其他程式);Apps Script 記住檔案 ID、每份履歷各自快取 6 小時,
+  `installWarmTrigger` 建立每 10 分鐘預熱排程(檔案更新後自動重新解析)
+- 免登入檢視字體放大、圖片不顯示「在雲端硬碟開啟」;網頁 `<title>` 留空、不放 description,貼到釘釘/LINE 的連結卡片不顯示多餘文字
 
 ## Excel 對應
 

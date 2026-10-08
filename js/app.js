@@ -530,13 +530,17 @@
   const thumbCache = new Map();
   function loadThumb(img, id) {
     if (!id) return;
-    if (!thumbCache.has(id)) thumbCache.set(id, (S.public ? publicFile(id) : Drive.media(id)).then((b) => URL.createObjectURL(b)));
+    // 失敗自動重試一次(免登入檢視時 Apps Script 偶爾會逾時)
+    const fetchOnce = () => (S.public ? publicFile(id) : Drive.media(id));
+    if (!thumbCache.has(id)) thumbCache.set(id, fetchOnce().catch(fetchOnce).then((b) => URL.createObjectURL(b)));
+    img.classList.remove('broken');
     thumbCache.get(id).then((u) => { img.src = u; }).catch(() => { thumbCache.delete(id); img.alt = '無法載入'; img.classList.add('broken'); });
   }
   function openLightbox(link) {
     $('lightboxImg').removeAttribute('src');
     loadThumb($('lightboxImg'), link.id);
     $('lightboxLink').href = link.url || '#';
+    $('lightboxLink').hidden = !!S.public; // 免登入檢視不顯示「在雲端硬碟開啟」(需登入才能開)
     $('lightbox').hidden = false;
   }
   $('lightbox').onclick = (e) => { if (e.target.id !== 'lightboxLink') $('lightbox').hidden = true; };
@@ -980,7 +984,13 @@
   async function publicView(id, key) {
     busy('讀取專案履歷…(第一次開啟約需數秒)');
     try {
-      const j = await gasGet({ id, k: key || '' });
+      // 頁面一開啟時已先送出的請求(index.html)可直接沿用,省下載入程式的時間
+      const early = window.__shareEarly;
+      window.__shareEarly = null;
+      let j = null;
+      if (early && early.id === id && early.k === (key || '')) j = await early.p.catch(() => null);
+      if (!j || !j.ok) j = j && j.error && !/逾時|timeout/i.test(j.error) ? j : await gasGet({ id, k: key || '' }).catch((e) => ({ ok: false, error: errMsg(e) }));
+      if (!j.ok) throw new Error(j.error || '讀取失敗');
       j.resume.shareKey = key;
       S.public = { id, key, resume: j.resume };
       renderResumeRead(j.resume);

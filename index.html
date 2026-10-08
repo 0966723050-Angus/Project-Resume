@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>ATK專案履歷</title>
-<meta name="description" content="ATK 專案履歷與殘件項目的手機編輯工具,直接讀寫 Google 雲端硬碟上的 Project Resume.xlsx">
+<!-- 標題留空、不放說明:貼到釘釘/LINE 時連結卡片不顯示多餘文字(頁面標題由程式設定) -->
+<title>&#8203;</title>
 <meta name="theme-color" content="#1e40af">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="ATK專案履歷">
@@ -12,6 +12,20 @@
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/style.css?v=dev">
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
+<script src="js/config.js?v=dev"></script>
+<script>
+  // 分享連結(#/v/<編號>?k=<分享碼>):一開啟就先向 Apps Script 要資料,不等其他程式載入
+  (function () {
+    var m = /^#\/v\/([^?]+)\?(?:.*&)?k=([^&]+)/.exec(location.hash);
+    var C = window.APP_CONFIG;
+    if (!m || !C || !C.SHARE_URL) return;
+    var id = decodeURIComponent(m[1]), k = decodeURIComponent(m[2]);
+    window.__shareEarly = { id: id, k: k, p: fetch(C.SHARE_URL + '?id=' + encodeURIComponent(id) + '&k=' + encodeURIComponent(k)).then(function (r) { return r.json(); }) };
+    window.__shareEarly.p.catch(function () {});
+  })();
+</script>
 </head>
 <body>
   <header class="app-header">
@@ -205,7 +219,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="js/config.js?v=dev"></script>
   <script src="js/store.js?v=dev"></script>
   <script src="js/export.js?v=dev"></script>
   <script src="js/pm-store.js?v=dev"></script>
