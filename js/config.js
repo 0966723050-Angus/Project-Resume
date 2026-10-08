@@ -111,11 +111,26 @@ window.APP_CONFIG = {
       { key: 'longLead', title: '長交期物料', kind: 'd' },
       { key: 'drawing', title: '圖面提交', kind: 'd' },
       { key: 'mo', title: '製令開立', kind: 'd' },
-      { key: 'purchase', title: '採購狀況', kind: 't' },
+      { key: 'purchase', title: '採購狀況', kind: 'd' },
       { key: 'current', title: '現況', kind: 'm' },
       { key: 'note', title: '備註', kind: 'm' },
       { key: 'closed', title: '結案', kind: 't' },
+      // 進度各項目的狀態(Excel 原本沒有這些欄;第一次存檔時接在最後一欄之後新增,標題放在對應項目旁說明)
+      { key: 'bomSt', title: '裝置構成表狀態', kind: 't', extra: 'bom' },
+      { key: 'longLeadSt', title: '長交期物料狀態', kind: 't', extra: 'longLead' },
+      { key: 'drawingSt', title: '圖面提交狀態', kind: 't', extra: 'drawing' },
+      { key: 'moSt', title: '製令開立狀態', kind: 't', extra: 'mo' },
+      { key: 'purchaseSt', title: '採購狀況狀態', kind: 't', extra: 'purchase' },
     ],
+    // 進度區塊:日期 + 狀態
+    PROGRESS: [
+      { label: '裝置構成表', date: 'bom', st: 'bomSt' },
+      { label: '長交期物料', date: 'longLead', st: 'longLeadSt' },
+      { label: '圖面提交', date: 'drawing', st: 'drawingSt' },
+      { label: '製令開立', date: 'mo', st: 'moSt' },
+      { label: '採購狀況', date: 'purchase', st: 'purchaseSt' },
+    ],
+    PROGRESS_STATUS: ['未進行', '進行中', '延遲', '已完成'],
     // 追蹤事項:第 1 組在原本的「追蹤確認事項/進度與結果/期限/狀態」欄;第 2 組起標題加編號(追蹤確認事項2…),
     // 從 EXTRA_START 欄開始往右新增(AB~AD 為表內既有輔助欄,不使用)
     TRACK: [

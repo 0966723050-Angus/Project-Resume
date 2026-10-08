@@ -121,6 +121,12 @@
 
     // 追蹤事項組數不夠 → 新增標題欄(樣式、欄寬比照第 1 組)
     while (data.groups.length < rec.tracks.length) addGroup(book, doc, data);
+    // 進度狀態等新欄位:有值才建立(接在最後一欄之後,標題樣式比照對應的日期欄)
+    // 第一次用到時,缺少的狀態欄依設定順序一次建立,欄位才會排在一起
+    const extras = PM.COLS.filter((c) => c.extra);
+    if (extras.some((c) => !idx[c.key] && String(rec[c.key] || '').trim())) {
+      for (const col of extras) if (!idx[col.key]) idx[col.key] = addColumn(book, doc, data, col.title, idx[col.extra], 12);
+    }
 
     let rowEl, r;
     if (fresh) { r = rec._row; rowEl = rowByNum.get(r).el; } else {
@@ -227,6 +233,25 @@
       if (w) book.ensureWidth(doc, ci, w.width);
     });
     data.groups.push(g);
+  }
+
+  // 在最後一欄之後(至少從 EXTRA_START)新增一個標題欄,回傳欄號
+  function addColumn(book, doc, data, title, styleCol, width) {
+    const header = book.rowsOf(data.name).rows.find((x) => x.r === 1);
+    const ci = Math.max(PM.EXTRA_START - 1, ...header.cells.keys()) + 1;
+    const src = styleCol && header.cells.get(styleCol);
+    const c = doc.createElementNS(NS, 'c');
+    c.setAttribute('r', idxToCol(ci) + 1);
+    if (src && src.getAttribute('s') != null) c.setAttribute('s', src.getAttribute('s'));
+    c.setAttribute('t', 'inlineStr');
+    const is = doc.createElementNS(NS, 'is');
+    const t = doc.createElementNS(NS, 't');
+    t.textContent = title;
+    is.appendChild(t);
+    c.appendChild(is);
+    header.el.insertBefore(c, kids(header.el, 'c').find((x) => refCol(x.getAttribute('r')) > ci) || null);
+    if (width) book.ensureWidth(doc, ci, width);
+    return ci;
   }
 
   // 更新 dimension / 篩選範圍
