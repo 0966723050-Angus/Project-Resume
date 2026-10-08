@@ -346,7 +346,8 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 /* 頁首 上一個/下一個 */
 .app-header .nav-btn { width: 32px; font-size: 28px; line-height: 1; font-weight: 300; padding: 0 0 4px; }
 .app-header .nav-btn:disabled { opacity: .35; cursor: default; }
-.btn.wide.pm-remain { margin: 0 0 12px; }
+.pm-links { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 12px; }
+.pm-links .btn { min-height: 44px; }
 .btn.wide.back-pm { margin: 0 0 8px; }
 
 /* 唯讀檢視:字放大(手機/釘釘內開啟較好讀) */
@@ -357,3 +358,30 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 #readView .ro-grid { gap: 14px 16px; }
 #readView .thumb { width: 120px; height: 120px; }
 #readView .attach { font-size: 16px; }
+
+/* ---------- Schedule ---------- */
+.sched-items { display: flex; flex-direction: column; gap: 8px; }
+.sched-row { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px 10px; transition: transform .12s; position: relative; }
+.sched-row.dragging { transition: none; z-index: 5; box-shadow: 0 8px 20px rgba(0,0,0,.18); background: var(--surface); }
+.sched-top { display: flex; align-items: center; gap: 6px; }
+.sched-top .field { flex: 1 1 auto; }
+.drag-handle { flex: none; width: 32px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--muted); cursor: grab; touch-action: none; user-select: none; }
+.sched-no { flex: none; min-width: 18px; font-size: 13px; color: var(--muted); font-weight: 700; }
+.sched-dates { display: grid; grid-template-columns: 0.7fr 1.2fr 1fr; gap: 6px; margin-top: 6px; }
+.sched-dates label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sched-dates input { width: 100%; min-width: 0; min-height: 40px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 6px 8px; font-size: 15px; }
+.sched-dates .sched-end { background: transparent; color: var(--muted); }
+.btn.wide.sched-add { margin-top: 10px; }
+.sched-tools { margin-top: 4px; }
+.sched-chart { margin-top: 12px; overflow-x: auto; background: #fff; border: 1px solid var(--border); border-radius: 12px; -webkit-overflow-scrolling: touch; }
+.sched-chart svg { display: block; width: 1191px; max-width: none; height: auto; }
+@media (min-width: 1240px) { .sched-chart svg { width: 100%; } }
+.color-list { display: flex; flex-direction: column; gap: 6px; white-space: normal; }
+.color-row { display: flex; align-items: center; gap: 10px; color: var(--text); cursor: pointer; }
+.color-row input[type="color"] { width: 44px; height: 30px; border: 1px solid var(--border); border-radius: 6px; padding: 0; background: none; flex: none; }
+@media (max-width: 560px) {
+  .sched-dates { grid-template-columns: 76px minmax(0, 1fr); }
+  .sched-dates label:last-child { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 8px; }
+  .sched-dates label:last-child input { min-height: 30px; padding: 2px 4px; border: 0; width: auto; flex: 1; }
+  .sched-dates input { font-size: 16px; }
+}

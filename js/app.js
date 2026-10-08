@@ -109,7 +109,7 @@
   }
 
   // ---------- 頁首 / 版面 ----------
-  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmEditView', 'settingsView'];
+  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmEditView', 'schedView', 'settingsView'];
   function showView(id, { title = 'ATK專案履歷', sub = '', back = null, save = false, link = false } = {}) {
     for (const v of VIEWS) $(v).hidden = v !== id;
     setTitle(title, sub);
@@ -120,7 +120,7 @@
     $('linkBtn').hidden = !link;
     hideNav();
     for (const a of document.querySelectorAll('[data-nav]')) {
-      a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || (id.startsWith('pm') && a.dataset.nav === 'pm'));
+      a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm'));
     }
     window.scrollTo(0, 0);
   }
@@ -169,6 +169,7 @@
     else if (parts[0] === 'remain') showRemainList(q.get('p'));
     else if (parts[0] === 'settings' && isAdmin()) showSettings();
     else if (parts[0] === 'pm' && isAdmin()) (parts[1] ? openPm(parts[1]) : showPmList());
+    else if (parts[0] === 'sched' && parts[1] && isAdmin()) openSched(parts[1]);
     else showList();
   }
   let lastHash = location.hash;
@@ -836,7 +837,7 @@
     markDirty();
   }
 
-  $('saveBtn').onclick = () => (editing && editing.type === 'remain' ? saveRemain() : editing && editing.type === 'pm' ? savePm() : saveResume());
+  $('saveBtn').onclick = () => (editing && editing.type === 'remain' ? saveRemain() : editing && editing.type === 'pm' ? savePm() : editing && editing.type === 'sched' ? saveSched() : saveResume());
 
   // 複製連結(尚未儲存時先儲存):剪貼簿同時放「標題 + 連結」文字與超連結格式,
   // 貼到 LINE/Teams/Email 都會看到「日期 專案代號 專案名稱 專案履歷」;連結開啟為唯讀
@@ -1434,7 +1435,9 @@
     const list = code ? S.data.remains.filter((r) => r.code === code) : [];
     const open = list.filter((r) => (r.status || 'Open') !== 'Close').length;
     b.disabled = !code;
-    b.textContent = code ? `🧩 殘件項目(Open ${open} / 共 ${list.length})` : '🧩 殘件項目(請先填專案代號)';
+    b.textContent = code ? `🧩 殘件項目(Open ${open} / 共 ${list.length})` : '🧩 殘件項目';
+    $('pmSchedBtn').disabled = !code;
+    $('pmSchedBtn').title = code ? '' : '請先填專案代號';
   }
   $('pmRemainBtn').onclick = () => {
     const code = String(editing.obj.code || '').trim();
@@ -1557,6 +1560,255 @@
     go('#/pm');
   };
 
+  // ---------- 專案 Schedule(長條圖) ----------
+  // 資料:Project Management.xlsx 同資料夾的 Project Schedule.json
+  //   { colors: { 工作項目: '#RRGGBB' }(各專案共用), schedules: { 專案代號: { title, start, end, items:[{name, days, start}] } } }
+  async function schedLoad() {
+    if (!S.sched) {
+      const f = await Drive.findByName(CFG.PM.SCHED_FILE);
+      S.sched = { fileId: f ? f.id : null, data: { colors: {}, schedules: {} } };
+    }
+    if (S.sched.fileId) {
+      const { bytes } = await Drive.download(S.sched.fileId);
+      S.sched.data = parseSched(bytes);
+    }
+  }
+  function parseSched(bytes) {
+    try {
+      const d = JSON.parse(new TextDecoder().decode(bytes) || '{}');
+      return { colors: d.colors || {}, schedules: d.schedules || {} };
+    } catch { throw new Error(`${CFG.PM.SCHED_FILE} 內容格式錯誤`); }
+  }
+  // 先下載最新檔、套用修改再存回(檔案不存在時在 Project Management.xlsx 同資料夾建立)
+  async function schedCommit(label, mutate) {
+    busy(label);
+    try {
+      let data = { colors: {}, schedules: {} };
+      if (!S.sched.fileId) { const f = await Drive.findByName(CFG.PM.SCHED_FILE); if (f) S.sched.fileId = f.id; }
+      if (S.sched.fileId) data = parseSched((await Drive.download(S.sched.fileId)).bytes);
+      mutate(data);
+      const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
+      if (S.sched.fileId) await Drive.upload(S.sched.fileId, blob, 'application/json');
+      else {
+        const parent = S.pm && S.pm.meta && S.pm.meta.parents && S.pm.meta.parents[0];
+        const f = await Drive.createFile(CFG.PM.SCHED_FILE, blob, 'application/json', parent ? [parent] : undefined);
+        S.sched.fileId = f.id;
+      }
+      S.sched.data = data;
+    } finally { busy(''); }
+  }
+  const addDays = (isoD, n) => { const t = Date.parse(isoD + 'T00:00:00Z'); return isNaN(t) ? '' : new Date(t + n * 86400000).toISOString().slice(0, 10); };
+
+  async function openSched(code) {
+    try {
+      busy('讀取 Schedule…');
+      await pmLoad();
+      await schedLoad();
+    } catch (err) { busy(''); toast(errMsg(err), 6000); replaceHash('#/pm'); showPmList(); return; } finally { busy(''); }
+    const pmRec = S.pm.data.records.find((r) => r.code === code);
+    const saved = S.sched.data.schedules[code];
+    const obj = saved ? clone(saved) : {
+      title: String((pmRec && pmRec.name) || '').trim().replace(/\s+/g, '_'),
+      start: '', end: '', items: [],
+    };
+    obj.code = code;
+    if (!obj.items.length) obj.items.push({ name: '', days: '', start: obj.start || '' });
+    editing = { type: 'sched', obj, snapshot: JSON.stringify(obj), isNew: !saved, uploads: [] };
+    const back = S.schedReturn && S.schedReturn.code === code && S.schedReturn.row ? '#/pm/' + S.schedReturn.row : '#/pm';
+    showView('schedView', { title: `${code} Schedule`, sub: pmRec ? pmRec.name : '', back, save: true });
+    $('schedChart').hidden = true;
+    renderSchedForm();
+    markDirty();
+    Gantt.prefetch(); // 背景先下載 PDF 字型
+  }
+
+  function renderSchedForm() {
+    const obj = editing.obj;
+    const box = $('schedHead');
+    box.innerHTML = '';
+    const hint = h('div', { class: 'hint-line' }, Gantt.titleOf(obj));
+    const titleF = fText('專案名稱(長條圖標題)', obj, 'title', { onChange: () => { hint.textContent = Gantt.titleOf(obj); } });
+    titleF.append(hint);
+    titleF.classList.add('span2');
+    box.append(titleF, fDate('長條圖起始日期', obj, 'start'), fDate('長條圖結束日期', obj, 'end'),
+      h('div', { class: 'hint-line span2' }, '長條圖以 7 天為一格,週一為每週第一天,日期標在每週一'));
+    renderSchedItems();
+  }
+
+  function renderSchedItems() {
+    const obj = editing.obj;
+    const box = $('schedItems');
+    box.innerHTML = '';
+    obj.items.forEach((it, i) => {
+      const endOut = h('input', { type: 'text', readonly: true, class: 'sched-end', tabindex: '-1', 'aria-label': '結束日期' });
+      const upEnd = () => { endOut.value = fmtDate(Gantt.endOf(it)); };
+      upEnd();
+      const days = h('input', { type: 'number', min: '1', step: '1', inputmode: 'numeric', 'aria-label': '工期(天)', placeholder: '天' });
+      days.value = it.days ?? '';
+      days.addEventListener('input', () => { it.days = days.value; upEnd(); markDirty(); });
+      const start = h('input', { type: 'date', 'aria-label': '起始日期' });
+      start.value = it.start || '';
+      start.addEventListener('change', () => { it.start = start.value; upEnd(); markDirty(); });
+      start.addEventListener('input', () => { it.start = start.value; upEnd(); markDirty(); });
+      const nameF = fCombo('工作項目', it, 'name', 'schedItem');
+      const handle = h('span', { class: 'drag-handle', title: '拖曳調整順序', 'aria-label': '拖曳調整順序' }, '≡');
+      const del = h('button', {
+        type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: async () => {
+          if ((it.name || it.days || it.start) && !(await confirmYes('刪除工作項目', `確定刪除「${it.name || '第 ' + (i + 1) + ' 項'}」?`, '刪除', 'btn-danger'))) return;
+          obj.items.splice(i, 1);
+          renderSchedItems();
+          markDirty();
+        },
+      }, '🗑');
+      nameF.querySelector('.flabel').remove();
+      const row = h('div', { class: 'sched-row', 'data-i': i },
+        h('div', { class: 'sched-top' }, handle, h('span', { class: 'sched-no' }, String(i + 1)), nameF, del),
+        h('div', { class: 'sched-dates' },
+          h('label', {}, h('span', { class: 'flabel' }, '工期(天)'), days),
+          h('label', {}, h('span', { class: 'flabel' }, '起始日期'), start),
+          h('label', {}, h('span', { class: 'flabel' }, '結束日期(自動)'), endOut)));
+      startDrag(handle, row);
+      box.append(row);
+    });
+  }
+
+  // 拖曳排序(滑鼠與觸控都可):按住 ≡ 上下移動,放開時依位置調整順序
+  function startDrag(handle, row) {
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const rows = [...$('schedItems').children];
+      const from = rows.indexOf(row);
+      const gap = row.offsetHeight + 8;
+      try { handle.setPointerCapture(e.pointerId); } catch {}
+      row.classList.add('dragging');
+      const startY = e.clientY;
+      // 以開始拖曳時各列的位置判斷(其他列滑動中的位置不準)
+      const centers = rows.map((r) => { const rc = r.getBoundingClientRect(); return rc.top + rc.height / 2; });
+      let to = from;
+      const move = (ev) => {
+        const dy = ev.clientY - startY;
+        row.style.transform = `translateY(${dy}px)`;
+        const mid = centers[from] + dy;
+        to = from;
+        centers.forEach((c, k) => {
+          if (k < from && mid < c) to = Math.min(to, k);
+          if (k > from && mid > c) to = Math.max(to, k);
+        });
+        rows.forEach((r, k) => {
+          if (r === row) return;
+          const shift = (k >= to && k < from) ? gap : (k <= to && k > from) ? -gap : 0;
+          r.style.transform = shift ? `translateY(${shift}px)` : '';
+        });
+      };
+      const up = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', up);
+        handle.removeEventListener('pointercancel', up);
+        rows.forEach((r) => { r.style.transform = ''; });
+        row.classList.remove('dragging');
+        if (to !== from) {
+          const items = editing.obj.items;
+          const [it] = items.splice(from, 1);
+          items.splice(to, 0, it);
+          markDirty();
+        }
+        renderSchedItems();
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up);
+      handle.addEventListener('pointercancel', up);
+    });
+  }
+
+  $('schedAdd').onclick = () => {
+    const items = editing.obj.items;
+    const prev = items[items.length - 1];
+    // 新項目的起始日預設接在上一項結束之後
+    const next = prev && Gantt.endOf(prev) ? addDays(Gantt.endOf(prev), 1) : (editing.obj.start || '');
+    items.push({ name: '', days: '', start: next });
+    renderSchedItems();
+    markDirty();
+    const rows = $('schedItems').children;
+    rows[rows.length - 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const schedData = () => {
+    const o = editing.obj;
+    return { title: o.title, start: o.start, end: o.end, items: o.items.filter((it) => it.name || it.start || it.days) };
+  };
+  function drawSched() {
+    const d = schedData();
+    if (!d.items.length) return toast('請先新增工作項目');
+    const box = $('schedChart');
+    box.innerHTML = Gantt.svg(d, S.sched.data.colors);
+    box.hidden = false;
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  $('schedDraw').onclick = drawSched;
+
+  $('schedPdf').onclick = async () => {
+    const d = schedData();
+    if (!d.items.length) return toast('請先新增工作項目');
+    busy('產生 PDF…(第一次需下載中文字型,約 6MB)');
+    let bytes;
+    try { bytes = await Gantt.pdf(d, S.sched.data.colors); } catch (err) { busy(''); return toast('PDF 產生失敗:' + errMsg(err), 6000); }
+    busy('');
+    const name = `${Gantt.titleOf(d).replace(/[\\/:*?"<>|]/g, '_')}.pdf`;
+    const file = new File([bytes], name, { type: 'application/pdf' });
+    if (navigator.canShare && matchMedia('(pointer: coarse)').matches && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = h('a', { href: URL.createObjectURL(file), download: name });
+    document.body.append(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    toast('已匯出 ' + name);
+  };
+
+  // 顏色設定:依工作項目(各專案共用),按「儲存顏色」立即存檔
+  $('schedColors').onclick = async () => {
+    const names = [...new Set([...(lists().schedItem || []), ...editing.obj.items.map((it) => it.name).filter(Boolean)])];
+    const colors = { ...S.sched.data.colors };
+    const body = h('div', { class: 'color-list' });
+    names.forEach((n) => {
+      const inp = h('input', { type: 'color', 'aria-label': n + ' 顏色' });
+      inp.value = Gantt.colorFor(n, colors);
+      colors[n] = inp.value; // 全部項目的顏色都存下來,之後各專案一致
+      inp.addEventListener('input', () => { colors[n] = inp.value; });
+      body.append(h('label', { class: 'color-row' }, inp, h('span', {}, n)));
+    });
+    const ok = await dialog('長條圖顏色(各專案通用)', body, [{ label: '取消', value: false }, { label: '儲存顏色', value: true, cls: 'btn-primary' }]);
+    if (!ok) return;
+    try {
+      await schedCommit('儲存顏色…', (d) => { d.colors = { ...d.colors, ...colors }; });
+      toast('✅ 顏色已儲存');
+      if (!$('schedChart').hidden) drawSched();
+    } catch (err) { toast('儲存失敗:' + errMsg(err), 6000); }
+  };
+
+  async function saveSched() {
+    const obj = editing.obj;
+    const rec = {
+      title: obj.title, start: obj.start, end: obj.end, updated: new Date().toISOString(),
+      items: obj.items.filter((it) => it.name || it.start || it.days).map((it) => ({ name: it.name, days: it.days, start: it.start })),
+    };
+    try {
+      await schedCommit('儲存 Schedule…', (d) => { d.schedules[obj.code] = rec; });
+    } catch (err) { toast('儲存失敗:' + errMsg(err), 6000); return false; }
+    editing.isNew = false;
+    editing.snapshot = JSON.stringify(editing.obj);
+    markDirty();
+    toast('✅ 已儲存到雲端硬碟');
+    return true;
+  }
+
+  $('pmSchedBtn').onclick = () => {
+    const code = String(editing.obj.code || '').trim();
+    if (!code) return;
+    S.schedReturn = { row: editing.obj._row, code };
+    go('#/sched/' + encodeURIComponent(code));
+  };
+
   // ---------- 設定 ----------
   function showSettings() {
     showView('settingsView', { title: '設定', sub: fileLine() });
@@ -1673,7 +1925,7 @@
     updatePending = true;
     while (isDirty()) {
       await dialog('程式已更新', '「ATK專案履歷」有新版本,必須更新後才能繼續使用。\n目前有尚未儲存的修改,將先儲存再更新。', [{ label: '儲存並更新', value: true, cls: 'btn-primary' }]);
-      const ok = editing.type === 'remain' ? await saveRemain() : editing.type === 'pm' ? await savePm() : await saveResume();
+      const ok = editing.type === 'remain' ? await saveRemain() : editing.type === 'pm' ? await savePm() : editing.type === 'sched' ? await saveSched() : await saveResume();
       if (!ok) toast('儲存未完成,請處理後再按一次「儲存並更新」', 5000);
     }
     toast('程式已更新,正在重新載入…', 3000);

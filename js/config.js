@@ -70,9 +70,13 @@ window.APP_CONFIG = {
 
   // 「Choice」工作表:下拉選單預設值(標題 → 清單代號)
   CHOICE_SHEET: 'Choice',
-  CHOICE_COLS: { '專案代號': 'code', '專案名稱': 'name', '階段': 'stage', '協同人員': 'members', '負責人': 'owner', '權責區分': 'dept', '狀態': 'status', '單元': 'unit', '管理階段': 'pmStage' },
+  CHOICE_COLS: { '專案代號': 'code', '專案名稱': 'name', '階段': 'stage', '協同人員': 'members', '負責人': 'owner', '權責區分': 'dept', '狀態': 'status', '單元': 'unit', '管理階段': 'pmStage', '排程工作項目': 'schedItem' },
   // Choice 中沒有該欄時的預設清單(第一次新增/刪除時自動建立欄位)
-  CHOICE_DEFAULTS: { pmStage: ['尚未進行', '設計', '採購', '加工', '工廠組立', '現地安裝', '出貨', '完工', '驗收', '保固內', '保固外'] },
+  CHOICE_DEFAULTS: {
+    pmStage: ['尚未進行', '設計', '採購', '加工', '工廠組立', '現地安裝', '出貨', '完工', '驗收', '保固內', '保固外'],
+    schedItem: ['PO Recived', 'Kick-off meeting', '設備設計及圖面繪制', '長交期物料採購', '電控及軟體設計', '部品採購', '設備組裝',
+      'HP升溫測試 & 調試', '機台運轉測試 & Debug', 'IAT', '清潔', '包裝 & 裝箱', 'Shipping'],
+  },
   // 設定頁可編輯的清單(專案代號/名稱成對編輯)
   LISTS: [
     { key: 'project', label: '專案代號 / 專案名稱' },
@@ -82,6 +86,7 @@ window.APP_CONFIG = {
     { key: 'owner', label: '負責人' },
     { key: 'dept', label: '權責區分' },
     { key: 'pmStage', label: '專案管理階段' },
+    { key: 'schedItem', label: 'Schedule 工作項目' },
   ],
   ECN_OPTIONS: ['是', '否'],
   STATUS_OPTIONS: ['Open', 'Close'],
@@ -144,6 +149,8 @@ window.APP_CONFIG = {
     ],
     EXTRA_START: 31, // AE
     CLOSED_OPTIONS: ['是', '否'],
+    // Schedule:各專案的排程與共用顏色存在 Project Management.xlsx 同資料夾的此檔(依專案代號)
+    SCHED_FILE: 'Project Schedule.json',
   },
 
   // 分享連結免登入檢視:Google Apps Script 網頁應用程式網址(gas/Code.gs,以管理者身分讀取 Excel,

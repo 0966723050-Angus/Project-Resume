@@ -160,7 +160,10 @@
 
     <section id="pmEditView" class="view" hidden>
       <form id="pmForm" autocomplete="off" onsubmit="return false">
-        <button id="pmRemainBtn" class="btn btn-ghost wide pm-remain" type="button">🧩 殘件項目</button>
+        <div class="pm-links">
+          <button id="pmRemainBtn" class="btn btn-ghost" type="button">🧩 殘件項目</button>
+          <button id="pmSchedBtn" class="btn btn-ghost" type="button">📅 Schedule</button>
+        </div>
         <div id="pmFields"></div>
         <div id="pmTracks"></div>
         <div class="form-actions">
@@ -168,6 +171,27 @@
         </div>
         <div id="pmClosedBox" class="panel"></div>
         <button id="pmDelete" class="btn btn-danger-ghost wide" type="button">刪除此列</button>
+      </form>
+    </section>
+
+    <!-- 專案 Schedule(只有管理者) -->
+    <section id="schedView" class="view" hidden>
+      <form id="schedForm" autocomplete="off" onsubmit="return false">
+        <div class="panel">
+          <h3 class="panel-title">Schedule 設定</h3>
+          <div id="schedHead" class="fields pm-grid"></div>
+        </div>
+        <div class="panel">
+          <h3 class="panel-title">工作項目 <span class="hint">(按住左側 ≡ 可拖曳調整順序)</span></h3>
+          <div id="schedItems" class="sched-items"></div>
+          <button id="schedAdd" class="btn btn-ghost wide sched-add" type="button">＋ 工作項目</button>
+        </div>
+        <div class="toolbar sched-tools">
+          <button id="schedDraw" class="btn btn-primary btn-sm" type="button">📊 繪圖</button>
+          <button id="schedPdf" class="btn btn-ghost btn-sm" type="button">⬇️ 匯出 PDF</button>
+          <button id="schedColors" class="btn btn-ghost btn-sm" type="button">🎨 顏色</button>
+        </div>
+        <div id="schedChart" class="sched-chart" hidden></div>
       </form>
     </section>
 
@@ -222,6 +246,7 @@
   <script src="js/store.js?v=dev"></script>
   <script src="js/export.js?v=dev"></script>
   <script src="js/pm-store.js?v=dev"></script>
+  <script src="js/gantt.js?v=dev"></script>
   <script src="js/drive.js?v=dev"></script>
   <script>
     // 本機測試:localhost 且網址帶 ?mock=1 時改用模擬雲端硬碟
