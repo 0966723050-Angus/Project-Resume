@@ -121,6 +121,8 @@ window.APP_CONFIG = {
       { key: 'drawingSt', title: '圖面提交狀態', kind: 't', extra: 'drawing' },
       { key: 'moSt', title: '製令開立狀態', kind: 't', extra: 'mo' },
       { key: 'purchaseSt', title: '採購狀況狀態', kind: 't', extra: 'purchase' },
+      { key: 'site', title: '現地施工', kind: 'd', extra: 'mo' },          // Excel 原本沒有,日期格式比照「製令開立」
+      { key: 'siteSt', title: '現地施工狀態', kind: 't', extra: 'site' },
     ],
     // 進度區塊:日期 + 狀態
     PROGRESS: [
@@ -129,6 +131,7 @@ window.APP_CONFIG = {
       { label: '圖面提交', date: 'drawing', st: 'drawingSt' },
       { label: '製令開立', date: 'mo', st: 'moSt' },
       { label: '採購狀況', date: 'purchase', st: 'purchaseSt' },
+      { label: '現地施工', date: 'site', st: 'siteSt' },
     ],
     PROGRESS_STATUS: ['未進行', '進行中', '延遲', '已完成'],
     // 追蹤事項:第 1 組在原本的「追蹤確認事項/進度與結果/期限/狀態」欄;第 2 組起標題加編號(追蹤確認事項2…),

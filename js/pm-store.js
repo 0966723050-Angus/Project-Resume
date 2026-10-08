@@ -146,14 +146,15 @@
       else sheetData.insertBefore(rowEl, rows.find((x) => x.r > r)?.el || null);
     }
     const tplRow = rowByNum.get(Math.max(2, Math.min(data.lastRow, r - 1))) || null;
-    const setCell = (ci, val, kind) => {
+    const setCell = (ci, val, kind, styleCol) => {
       if (!ci) return;
       const ref = idxToCol(ci) + r;
       let c = kids(rowEl, 'c').find((x) => x.getAttribute('r') === ref);
       if (!c) {
         c = doc.createElementNS(NS, 'c');
         c.setAttribute('r', ref);
-        const t = tplRow && tplRow.cells.get(ci);
+        // 樣式:上一列同欄;新增的欄沒有 → 比照對應欄(例如現地施工比照製令開立)
+        const t = (tplRow && tplRow.cells.get(ci)) || (styleCol && (kids(rowEl, 'c').find((x) => refCol(x.getAttribute('r')) === styleCol) || (tplRow && tplRow.cells.get(styleCol))));
         if (t && t.getAttribute('s') != null) c.setAttribute('s', t.getAttribute('s'));
         rowEl.insertBefore(c, kids(rowEl, 'c').find((x) => refCol(x.getAttribute('r')) > ci) || null);
       }
@@ -181,7 +182,7 @@
     };
     // 只寫有變動的格子(新增時寫全部有值的欄位)
     const before = fresh || {};
-    for (const col of PM.COLS) if (!fresh || (rec[col.key] ?? '') !== (before[col.key] ?? '')) setCell(idx[col.key], rec[col.key], col.kind);
+    for (const col of PM.COLS) if (!fresh || (rec[col.key] ?? '') !== (before[col.key] ?? '')) setCell(idx[col.key], rec[col.key], col.kind, col.extra && idx[col.extra]);
     const nGroups = Math.max(rec.tracks.length, before.tracks ? before.tracks.length : 0);
     for (let i = 0; i < nGroups; i++) {
       const g = data.groups[i];
