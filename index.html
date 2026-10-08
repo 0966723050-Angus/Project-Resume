@@ -30,6 +30,7 @@
     <div class="drawer-brand">ATK專案履歷</div>
     <a class="drawer-item" href="#/" data-nav="list">📋 專案履歷</a>
     <a class="drawer-item" href="#/remain" data-nav="remain">🧩 殘件項目</a>
+    <a class="drawer-item" href="#/pm" data-nav="pm" id="navPm" hidden>📁 專案管理</a>
     <a class="drawer-item" href="#/settings" data-nav="settings" id="navSettings" hidden>⚙️ 設定</a>
     <div class="drawer-foot">
       <div id="userLine" class="drawer-user"></div>
@@ -124,6 +125,34 @@
       </form>
     </section>
 
+    <!-- 專案管理(只有管理者) -->
+    <section id="pmListView" class="view" hidden>
+      <div class="filter-bar">
+        <input id="pmSearch" type="search" placeholder="輸入專案代號或專案名稱(可只打部分文字)" aria-label="查詢專案" autocomplete="off">
+        <button id="pmClear" class="btn btn-ghost btn-sm" type="button">清除</button>
+      </div>
+      <div class="quick-dates">
+        <label class="pm-open"><input id="pmOpenOnly" type="checkbox"> 只看未結案</label>
+      </div>
+      <div id="pmCount" class="count-line"></div>
+      <div id="pmHint" class="search-hint">🔍 請輸入專案代號或專案名稱查詢(模糊比對,例如輸入「pre heat」可找到「Mirle Pre-Heat」);<br>按右下「＋ 新增」建立新的專案批次。</div>
+      <div id="pmList" class="card-list"></div>
+      <div id="pmEmpty" class="empty" hidden>沒有符合的專案</div>
+      <button id="pmAdd" class="fab" type="button">＋ 新增</button>
+    </section>
+
+    <section id="pmEditView" class="view" hidden>
+      <form id="pmForm" autocomplete="off" onsubmit="return false">
+        <div id="pmFields"></div>
+        <div id="pmTracks"></div>
+        <div class="form-actions">
+          <button id="pmAddTrack" class="btn btn-ghost" type="button">＋ 新增追蹤事項</button>
+        </div>
+        <div id="pmClosedBox" class="panel"></div>
+        <button id="pmDelete" class="btn btn-danger-ghost wide" type="button">刪除此列</button>
+      </form>
+    </section>
+
     <!-- 設定 -->
     <section id="settingsView" class="view" hidden>
       <div class="panel">
@@ -175,6 +204,7 @@
   <script src="js/config.js?v=dev"></script>
   <script src="js/store.js?v=dev"></script>
   <script src="js/export.js?v=dev"></script>
+  <script src="js/pm-store.js?v=dev"></script>
   <script src="js/drive.js?v=dev"></script>
   <script>
     // 本機測試:localhost 且網址帶 ?mock=1 時改用模擬雲端硬碟

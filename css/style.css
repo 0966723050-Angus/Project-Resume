@@ -315,3 +315,13 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 .quick-dates .btn { flex: 0 0 auto; min-width: 72px; }
 /* 工作內容:初始高度為一般多行欄位的 2 倍 */
 .field textarea.ta-work { min-height: 128px; }
+
+/* ---------- 專案管理 ---------- */
+@media (min-width: 700px) {
+  .pm-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .pm-grid .span2 { grid-column: 1 / -1; }
+}
+.pm-open { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); cursor: pointer; }
+.pm-open input { width: 18px; height: 18px; accent-color: var(--primary); }
+#pmClosedBox { margin-top: 12px; }
+#pmSearch { flex: 1 1 auto; }

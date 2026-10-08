@@ -359,13 +359,31 @@
         }
       }
       sortProjects(lists.projects);
-      return { lists, colOf };
+      // Choice 尚無此欄 → 使用預設清單(之後新增/刪除時才建立欄位)
+      for (const [key, def] of Object.entries(CFG.CHOICE_DEFAULTS || {})) if (!colOf[key] && !lists[key].length) lists[key] = [...def];
+      const headerStyle = header ? (header.cells.get(1) || header.cells.values().next().value || { getAttribute: () => null }).getAttribute('s') : null;
+      return { lists, colOf, headerStyle };
     }
 
     writeChoice(choice) {
       const { lists, colOf } = choice;
       const { doc, sheetData, rows } = this.rowsOf(CFG.CHOICE_SHEET);
       const widths = this.colWidths(doc);
+      // 標題列沒有的清單欄位(例如「管理階段」)→ 接在最後一欄之後新增標題
+      const header = rows.find((x) => x.r === 1);
+      if (header) {
+        for (const [title, key] of Object.entries(CFG.CHOICE_COLS)) {
+          if (colOf[key] || !lists[key] || !lists[key].length || key === 'code' || key === 'name') continue;
+          const ci = Math.max(0, ...header.cells.keys(), ...Object.values(colOf)) + 1;
+          const c = doc.createElementNS(NS, 'c');
+          c.setAttribute('r', idxToCol(ci) + 1);
+          if (choice.headerStyle != null) c.setAttribute('s', choice.headerStyle);
+          setValue(doc, c, title);
+          header.el.appendChild(c);
+          header.cells.set(ci, c);
+          colOf[key] = ci;
+        }
+      }
       for (const row of rows) if (row.r >= 2) sheetData.removeChild(row.el);
       sortProjects(lists.projects);
       const colLists = [];

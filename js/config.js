@@ -70,7 +70,9 @@ window.APP_CONFIG = {
 
   // 「Choice」工作表:下拉選單預設值(標題 → 清單代號)
   CHOICE_SHEET: 'Choice',
-  CHOICE_COLS: { '專案代號': 'code', '專案名稱': 'name', '階段': 'stage', '協同人員': 'members', '負責人': 'owner', '權責區分': 'dept', '狀態': 'status', '單元': 'unit' },
+  CHOICE_COLS: { '專案代號': 'code', '專案名稱': 'name', '階段': 'stage', '協同人員': 'members', '負責人': 'owner', '權責區分': 'dept', '狀態': 'status', '單元': 'unit', '管理階段': 'pmStage' },
+  // Choice 中沒有該欄時的預設清單(第一次新增/刪除時自動建立欄位)
+  CHOICE_DEFAULTS: { pmStage: ['尚未進行', '設計', '採購', '加工', '工廠組立', '現地安裝', '出貨', '完工', '驗收', '保固內', '保固外'] },
   // 設定頁可編輯的清單(專案代號/名稱成對編輯)
   LISTS: [
     { key: 'project', label: '專案代號 / 專案名稱' },
@@ -79,9 +81,52 @@ window.APP_CONFIG = {
     { key: 'members', label: '協同作業人員' },
     { key: 'owner', label: '負責人' },
     { key: 'dept', label: '權責區分' },
+    { key: 'pmStage', label: '專案管理階段' },
   ],
   ECN_OPTIONS: ['是', '否'],
   STATUS_OPTIONS: ['Open', 'Close'],
+
+  // 「專案管理」(只有管理者可見/可編輯):共用雲端硬碟 ATK 的 Project Management.xlsx,一列 = 一個專案批次
+  PM: {
+    FILE_NAMES: ['Project Management.xlsx', 'Project Managment.xlsx'], // 依序尋找(檔名拼法兩種都接受)
+    SHEET: 'project list',
+    // kind:n 數字 / d 日期 / t 文字 / m 多行文字
+    COLS: [
+      { key: 'year', title: '年度', kind: 'n' },
+      { key: 'code', title: '專案代號', kind: 't' },
+      { key: 'name', title: '專案名稱', kind: 't' },
+      { key: 'part', title: '產品品號', kind: 't' },
+      { key: 'order', title: '訂單號碼', kind: 'n' },
+      { key: 'custNo', title: '客戶單號', kind: 'n' },
+      { key: 'batch', title: '批次', kind: 'n' },
+      { key: 'qty', title: '數量', kind: 'n' },
+      { key: 'needDate', title: '需求日期', kind: 'd' },
+      { key: 'contact', title: '客戶聯絡人', kind: 't' },
+      { key: 'design', title: '設計擔當人員', kind: 't' },
+      { key: 'elec', title: '電控擔當人員', kind: 't' },
+      { key: 'soft', title: '軟體擔當人員', kind: 't' },
+      { key: 'tech', title: '技術擔當人員', kind: 't' },
+      { key: 'stage', title: '階段', kind: 't' },
+      { key: 'bom', title: '裝置構成表', kind: 'd' },
+      { key: 'longLead', title: '長交期物料', kind: 'd' },
+      { key: 'drawing', title: '圖面提交', kind: 'd' },
+      { key: 'mo', title: '製令開立', kind: 'd' },
+      { key: 'purchase', title: '採購狀況', kind: 't' },
+      { key: 'current', title: '現況', kind: 'm' },
+      { key: 'note', title: '備註', kind: 'm' },
+      { key: 'closed', title: '結案', kind: 't' },
+    ],
+    // 追蹤事項:第 1 組在原本的「追蹤確認事項/進度與結果/期限/狀態」欄;第 2 組起標題加編號(追蹤確認事項2…),
+    // 從 EXTRA_START 欄開始往右新增(AB~AD 為表內既有輔助欄,不使用)
+    TRACK: [
+      { key: 'item', title: '追蹤確認事項', kind: 'm' },
+      { key: 'progress', title: '進度與結果', kind: 'm' },
+      { key: 'due', title: '期限', kind: 'd' },
+      { key: 'status', title: '狀態', kind: 't' },
+    ],
+    EXTRA_START: 31, // AE
+    CLOSED_OPTIONS: ['是', '否'],
+  },
 
   // 分享連結免登入檢視:Google Apps Script 網頁應用程式網址(gas/Code.gs,以管理者身分讀取 Excel,
   // 只回傳連結指定、且分享碼相符的那份履歷)。留空時,開啟分享連結仍需登入。

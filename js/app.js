@@ -65,6 +65,7 @@
       S.user = await Drive.whoAmI().catch(() => null);
       if (S.user) $('userLine').textContent = `${S.user.displayName}\n${S.user.emailAddress}`;
       $('navSettings').hidden = !isAdmin(); // 設定只有管理者看得到
+      $('navPm').hidden = !isAdmin(); // 專案管理只有管理者看得到
       busy(`尋找「${CFG.FILE_NAME}」…`);
       const f = await Drive.findByName(CFG.FILE_NAME);
       if (!f) {
@@ -108,7 +109,7 @@
   }
 
   // ---------- 頁首 / 版面 ----------
-  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'settingsView'];
+  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmEditView', 'settingsView'];
   function showView(id, { title = 'ATK專案履歷', sub = '', back = null, save = false, link = false } = {}) {
     for (const v of VIEWS) $(v).hidden = v !== id;
     setTitle(title, sub);
@@ -118,7 +119,7 @@
     $('saveBtn').hidden = !save;
     $('linkBtn').hidden = !link;
     for (const a of document.querySelectorAll('[data-nav]')) {
-      a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings'));
+      a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || (id.startsWith('pm') && a.dataset.nav === 'pm'));
     }
     window.scrollTo(0, 0);
   }
@@ -166,6 +167,7 @@
     else if (parts[0] === 'remain' && parts[1]) openRemain(parts[1], q.get('p'));
     else if (parts[0] === 'remain') showRemainList(q.get('p'));
     else if (parts[0] === 'settings' && isAdmin()) showSettings();
+    else if (parts[0] === 'pm' && isAdmin()) (parts[1] ? openPm(parts[1]) : showPmList());
     else showList();
   }
   let lastHash = location.hash;
@@ -800,7 +802,7 @@
     markDirty();
   }
 
-  $('saveBtn').onclick = () => (editing && editing.type === 'remain' ? saveRemain() : saveResume());
+  $('saveBtn').onclick = () => (editing && editing.type === 'remain' ? saveRemain() : editing && editing.type === 'pm' ? savePm() : saveResume());
 
   // 複製連結(尚未儲存時先儲存):剪貼簿同時放「標題 + 連結」文字與超連結格式,
   // 貼到 LINE/Teams/Email 都會看到「日期 專案代號 專案名稱 專案履歷」;連結開啟為唯讀
@@ -1260,6 +1262,218 @@
     go(back);
   };
 
+  // ---------- 專案管理(只有管理者) ----------
+  // 資料:Project Management.xlsx(一列 = 一個專案批次);第一次進入時下載,之後每次存檔先下載最新檔再逐格修改
+  async function pmLoad(force) {
+    if (S.pm && S.pm.data && !force) return;
+    busy('讀取專案管理檔…');
+    try {
+      if (!S.pm) {
+        let f = null;
+        for (const n of CFG.PM.FILE_NAMES) { f = await Drive.findByName(n); if (f) break; }
+        if (!f) throw new Error(`找不到「${CFG.PM.FILE_NAMES[0]}」,或此帳號沒有權限`);
+        S.pm = { fileId: f.id };
+      }
+      const { meta, bytes } = await Drive.download(S.pm.fileId);
+      S.pm.meta = meta;
+      S.pm.data = PmStore.read(bytes);
+    } finally { busy(''); }
+  }
+  async function pmCommit(label, op) {
+    busy(label);
+    try {
+      const { bytes } = await Drive.download(S.pm.fileId);
+      const out = PmStore.apply(bytes, op);
+      busy(label.replace(/…$/, '') + '(上傳中)…');
+      S.pm.meta = await Drive.upload(S.pm.fileId, out);
+      S.pm.data = PmStore.read(out);
+    } finally { busy(''); }
+  }
+  const pmFileLine = () => {
+    const m = S.pm && S.pm.meta;
+    if (!m) return '';
+    const d = new Date(m.modifiedTime);
+    return `${m.name} · ${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())} 更新`;
+  };
+  // 模糊比對:忽略大小寫、空白、底線、連字號;多個關鍵字須全部出現
+  const fuzzy = (s) => String(s || '').toLowerCase().replace(/[\s_\-()（）]/g, '');
+  function pmMatch(r, q) {
+    const hay = fuzzy(`${r.code} ${r.name} ${r.part}`);
+    return q.split(/\s+/).filter(Boolean).every((t) => hay.includes(fuzzy(t))) || hay.includes(fuzzy(q));
+  }
+
+  async function showPmList() {
+    try { await pmLoad(); } catch (err) { toast(errMsg(err), 6000); replaceHash('#/'); showList(); return; }
+    showView('pmListView', { title: '專案管理', sub: pmFileLine() });
+    renderPmList();
+  }
+  function renderPmList() {
+    const q = $('pmSearch').value.trim();
+    const openOnly = $('pmOpenOnly').checked;
+    const searching = !!q || openOnly;
+    $('pmHint').hidden = searching;
+    const box = $('pmList');
+    box.innerHTML = '';
+    if (!searching) { $('pmEmpty').hidden = true; $('pmCount').textContent = ''; return; }
+    const items = S.pm.data.records
+      .filter((r) => (!q || pmMatch(r, q)) && (!openOnly || r.closed !== '是'))
+      .sort((a, b) => Store.compareCode(a.code, b.code) || (Number(a.batch) || 0) - (Number(b.batch) || 0) || a._row - b._row);
+    for (const r of items) {
+      const openTracks = r.tracks.filter((t) => (t.item || t.progress) && t.status !== 'Close').length;
+      box.append(h('a', { class: 'card' + (r.closed === '是' ? ' closed' : ''), href: '#/pm/' + r._row },
+        h('div', { class: 'card-top' },
+          r.stage ? h('span', { class: 'chip' }, r.stage) : null,
+          r.closed ? h('span', { class: 'status ' + (r.closed === '是' ? 'st-close' : 'st-open') }, r.closed === '是' ? '已結案' : '未結案') : null,
+          h('span', { class: 'author' }, r.year || '')),
+        h('div', { class: 'card-title' }, h('span', { class: 'code' }, r.code || '(未填代號)'), ' ', r.name || ''),
+        h('div', { class: 'card-sub' }, [r.part && '品號 ' + r.part, r.batch && '批次 ' + r.batch, r.qty && '數量 ' + r.qty].filter(Boolean).join(' · ') || ' '),
+        r.current ? h('div', { class: 'ptext' }, '現況:' + r.current) : null,
+        openTracks ? h('div', { class: 'card-foot' }, h('span', { class: 'warn' }, `追蹤中 ${openTracks} 項`)) : null));
+    }
+    $('pmEmpty').hidden = items.length > 0;
+    $('pmCount').textContent = `查詢結果 ${items.length} 筆`;
+  }
+  let pmTimer;
+  $('pmSearch').oninput = () => { clearTimeout(pmTimer); pmTimer = setTimeout(renderPmList, 150); };
+  $('pmOpenOnly').onchange = renderPmList;
+  $('pmClear').onclick = () => { $('pmSearch').value = ''; $('pmOpenOnly').checked = false; renderPmList(); };
+  $('pmAdd').onclick = () => go('#/pm/new');
+
+  const blankTrack = () => ({ item: '', progress: '', due: '', status: 'Open' });
+  async function openPm(id) {
+    try { await pmLoad(); } catch (err) { toast(errMsg(err), 6000); replaceHash('#/'); showList(); return; }
+    let obj, isNew = false;
+    if (id === 'new') {
+      isNew = true;
+      obj = { tracks: [] };
+      for (const c of CFG.PM.COLS) obj[c.key] = '';
+      obj.closed = '否';
+    } else {
+      const r = S.pm.data.records.find((x) => x._row === Number(id));
+      if (!r) { toast('找不到此列(可能已被刪除或移動,請重新查詢)', 4000); replaceHash('#/pm'); showPmList(); return; }
+      obj = clone(r);
+    }
+    if (!obj.tracks.length) obj.tracks.push(blankTrack());
+    editing = { type: 'pm', obj, snapshot: JSON.stringify(obj), isNew, uploads: [] };
+    $('pmDelete').hidden = isNew;
+    showView('pmEditView', { title: pmTitle(obj, isNew), sub: pmFileLine(), back: '#/pm', save: true });
+    renderPmForm();
+    markDirty();
+  }
+  const pmTitle = (o, isNew) => (isNew && !o.code ? '新增專案' : [o.code, o.name].filter(Boolean).join(' ') + ' 專案管理');
+
+  function renderPmForm() {
+    const obj = editing.obj;
+    const upTitle = () => setTitle(pmTitle(obj, editing.isNew), pmFileLine());
+    // 專案代號 → 帶入專案名稱與年度
+    const findName = (code) => {
+      const c = String(code || '').trim().toLowerCase();
+      if (!c) return '';
+      const hit = S.pm.data.records.find((r) => String(r.code).toLowerCase() === c) || lists().projects.find((p) => String(p.code).toLowerCase() === c);
+      return hit ? hit.name : '';
+    };
+    let nameF, yearInp;
+    const onCode = (v) => {
+      if (!obj.name) { const n = findName(v); if (n) { obj.name = n; nameF.combo.setValue(n); } }
+      const y = PmStore.yearFromCode(v);
+      if (y && !obj.year) { obj.year = y; yearInp.value = y; }
+      upTitle();
+    };
+    const codeF = fCombo('專案代號', obj, 'code', 'code', {
+      onPick: (v) => { const n = findName(v); if (n) { obj.name = n; nameF.combo.setValue(n); } onCode(v); },
+      onInput: onCode,
+    });
+    nameF = fCombo('專案名稱', obj, 'name', 'name', {
+      onPick: (v) => { const p = lists().projects.find((x) => x.name === v); if (p && !obj.code) { obj.code = p.code; codeF.combo.setValue(p.code); onCode(p.code); } upTitle(); },
+      onInput: upTitle,
+    });
+    const yearF = fText('年度', obj, 'year', { inputmode: 'numeric' });
+    yearInp = yearF.querySelector('input');
+    const panel = (title, ...fields) => h('div', { class: 'panel' }, h('h3', { class: 'panel-title' }, title), h('div', { class: 'fields pm-grid' }, ...fields));
+    const box = $('pmFields');
+    box.innerHTML = '';
+    box.append(
+      panel('基本資料', codeF, nameF, yearF,
+        fText('產品品號', obj, 'part'), fText('訂單號碼', obj, 'order', { inputmode: 'numeric' }), fText('客戶單號', obj, 'custNo'),
+        fText('批次', obj, 'batch', { inputmode: 'numeric' }), fText('數量', obj, 'qty', { inputmode: 'numeric' }),
+        fDate('需求日期', obj, 'needDate'), fCombo('階段', obj, 'stage', 'pmStage')),
+      panel('人員', fText('客戶聯絡人', obj, 'contact'), fText('設計擔當人員', obj, 'design'), fText('電控擔當人員', obj, 'elec'),
+        fText('軟體擔當人員', obj, 'soft'), fText('技術擔當人員', obj, 'tech')),
+      panel('進度', fDate('裝置構成表', obj, 'bom'), fDate('長交期物料', obj, 'longLead'), fDate('圖面提交', obj, 'drawing'),
+        fDate('製令開立', obj, 'mo'), fText('採購狀況', obj, 'purchase'), fText('現況', obj, 'current', { multi: true }),
+        fText('備註', obj, 'note', { multi: true })),
+    );
+    for (const f of box.querySelectorAll('.pm-grid > .field')) if (f.querySelector('textarea')) f.classList.add('span2');
+    renderPmTracks();
+    const cb = $('pmClosedBox');
+    cb.innerHTML = '';
+    cb.append(fChips('結案', obj, 'closed', CFG.PM.CLOSED_OPTIONS));
+  }
+  function renderPmTracks() {
+    const obj = editing.obj;
+    const box = $('pmTracks');
+    box.innerHTML = '';
+    obj.tracks.forEach((t, i) => {
+      const del = h('button', {
+        type: 'button', class: 'link-btn danger', onclick: async () => {
+          if (!(await confirmYes('刪除追蹤事項', `確定刪除追蹤事項 ${i + 1}?`, '刪除', 'btn-danger'))) return;
+          obj.tracks.splice(i, 1);
+          if (!obj.tracks.length) obj.tracks.push(blankTrack());
+          renderPmTracks();
+          markDirty();
+        },
+      }, '刪除');
+      box.append(h('div', { class: 'panel problem' },
+        h('div', { class: 'panel-title row' }, h('span', {}, `追蹤事項 ${i + 1}`), h('span', { class: 'grow' }), del),
+        h('div', { class: 'fields' },
+          fText('追蹤確認事項', t, 'item', { multi: true }),
+          fText('進度與結果', t, 'progress', { multi: true }),
+          fDate('期限', t, 'due'),
+          fChips('狀態', t, 'status', CFG.STATUS_OPTIONS))));
+    });
+  }
+  $('pmAddTrack').onclick = () => {
+    editing.obj.tracks.push(blankTrack());
+    renderPmTracks();
+    markDirty();
+    const panels = $('pmTracks').children;
+    panels[panels.length - 1].scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  async function savePm() {
+    if (!isAdmin()) { toast('只有管理者可以編輯專案管理'); return false; }
+    const obj = editing.obj;
+    if (!String(obj.code || '').trim()) { toast('請填寫專案代號'); return false; }
+    const rec = clone(obj);
+    // 空白的追蹤事項(只剩預設狀態)不寫入
+    rec.tracks = rec.tracks.filter((t) => t.item || t.progress || t.due);
+    try {
+      await pmCommit('儲存專案管理…', { type: 'save', rec });
+    } catch (err) { toast('儲存失敗:' + errMsg(err), 6000); return false; }
+    // 找回存檔後的那一列(新增的在最後一列)
+    const saved = editing.isNew ? S.pm.data.records[S.pm.data.records.length - 1]
+      : S.pm.data.records.find((x) => x._row === rec._row);
+    editing.isNew = false;
+    editing.obj = clone(saved);
+    if (!editing.obj.tracks.length) editing.obj.tracks.push(blankTrack());
+    editing.snapshot = JSON.stringify(editing.obj);
+    replaceHash('#/pm/' + saved._row);
+    $('pmDelete').hidden = false;
+    setTitle(pmTitle(saved, false), pmFileLine());
+    renderPmForm();
+    markDirty();
+    toast('✅ 已儲存到雲端硬碟');
+    return true;
+  }
+  $('pmDelete').onclick = async () => {
+    const obj = editing.obj;
+    if (!(await confirmYes('刪除此列', `確定從 Excel 刪除「${[obj.code, obj.name, obj.part && '品號 ' + obj.part].filter(Boolean).join(' ')}」這一列?\n下方各列會往上移。`, '刪除', 'btn-danger'))) return;
+    try { await pmCommit('刪除中…', { type: 'delete', rec: obj }); } catch (err) { return toast('刪除失敗:' + errMsg(err), 6000); }
+    editing = null;
+    toast('已刪除');
+    go('#/pm');
+  };
+
   // ---------- 設定 ----------
   function showSettings() {
     showView('settingsView', { title: '設定', sub: fileLine() });
@@ -1376,7 +1590,7 @@
     updatePending = true;
     while (isDirty()) {
       await dialog('程式已更新', '「ATK專案履歷」有新版本,必須更新後才能繼續使用。\n目前有尚未儲存的修改,將先儲存再更新。', [{ label: '儲存並更新', value: true, cls: 'btn-primary' }]);
-      const ok = editing.type === 'remain' ? await saveRemain() : await saveResume();
+      const ok = editing.type === 'remain' ? await saveRemain() : editing.type === 'pm' ? await savePm() : await saveResume();
       if (!ok) toast('儲存未完成,請處理後再按一次「儲存並更新」', 5000);
     }
     toast('程式已更新,正在重新載入…', 3000);
