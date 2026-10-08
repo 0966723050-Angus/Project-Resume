@@ -665,7 +665,7 @@
   $('addResume').onclick = () => go('#/r/new');
 
   // ---------- 專案履歷編輯 ----------
-  const blankProblem = () => ({ problem: '', images: '', files: '', cause: '', temp: '', perm: '', result: '', note: '', remain: '' });
+  const blankProblem = () => ({ problem: '', cause: '', temp: '', perm: '', result: '', note: '', remain: '' });
   function resumeTitle(r) {
     const t = [fmtDate(r.start), r.code, r.name].filter(Boolean).join(' ');
     return (t ? t + ' ' : '') + '專案履歷';
@@ -680,7 +680,7 @@
     let obj, isNew = false;
     if (id === 'new') {
       isNew = true;
-      obj = { id: Store.newId('PR'), saved: true, code: '', name: '', plant: '', line: '', equip: '', unit: '', stage: '', start: nowRounded(), end: '', hours: '', members: '', work: '', problems: [blankProblem()], author: myName(), authorEmail: myEmail(), shareKey: newShareKey() };
+      obj = { id: Store.newId('PR'), saved: true, code: '', name: '', plant: '', line: '', equip: '', unit: '', stage: '', start: nowRounded(), end: '', hours: '', members: '', work: '', images: '', files: '', problems: [blankProblem()], author: myName(), authorEmail: myEmail(), shareKey: newShareKey() };
     } else {
       const r = S.data.resumes.find((x) => x.id === id);
       if (!r) { toast('找不到此專案履歷(可能已被刪除,或請重新載入)', 4000); replaceHash('#/'); showList(); return; }
@@ -724,8 +724,10 @@
       hoursF,
       fMembers(obj),
       fText('工作內容', obj, 'work', { multi: true, cls: 'ta-work' }),
+      fFiles('圖片', obj, 'images', { image: true, prefix: () => obj.code || obj.name }),
+      fFiles('附件', obj, 'files', { prefix: () => obj.code || obj.name }),
     );
-    box.lastChild.classList.add('span2');
+    for (const el of [...box.children].slice(-3)) el.classList.add('span2');
     renderProblems();
   }
 
@@ -744,14 +746,11 @@
           markDirty();
         },
       }, '刪除');
-      const prefix = () => obj.code || obj.name;
       box.append(h('div', { class: 'panel problem' },
         h('div', { class: 'panel-title row' }, h('span', {}, `問題 ${i + 1}`),
           p.remain ? h('span', { class: 'badge-remain' }, '已轉殘件') : null, h('span', { class: 'grow' }), del),
         h('div', { class: 'fields' },
           fText('問題描述', p, 'problem', { multi: true }),
-          fFiles('圖片', p, 'images', { image: true, prefix }),
-          fFiles('附件', p, 'files', { prefix }),
           fText('發生原因', p, 'cause', { multi: true }),
           fText('暫定對策', p, 'temp', { multi: true }),
           fText('永久對策', p, 'perm', { multi: true }),
@@ -894,6 +893,11 @@
     }
     return h('div', { class: 'ro-field' }, h('div', { class: 'flabel' }, label), box);
   }
+  // 履歷層級的圖片/附件(免登入檢視時 Apps Script 仍以各問題列回傳 → 合併)
+  function resumeFiles(r, key) {
+    const lines = [r[key], ...(r.problems || []).map((p) => p[key])].join('\n').split('\n').map((x) => x.trim()).filter(Boolean);
+    return [...new Set(lines)].join('\n');
+  }
   function viewResume(id) {
     const r = S.data.resumes.find((x) => x.id === id);
     if (!r) { toast('找不到此專案履歷(可能已被刪除,或沒有權限)', 4000); replaceHash('#/'); showList(); return; }
@@ -913,13 +917,13 @@
         roField('作業開始時間', fmtDT(r.start)), roField('作業結束時間', fmtDT(r.end)),
         roField('報工時數', r.hours !== '' && r.hours != null ? r.hours + ' 小時' : ''), roField('協同作業人員', r.members),
         roField('填表人', r.author)),
-      roField('工作內容', r.work)));
+      roField('工作內容', r.work), roFiles('圖片', resumeFiles(r, 'images'), true), roFiles('附件', resumeFiles(r, 'files'), false)));
     r.problems.forEach((p, i) => {
-      const any = ['problem', 'images', 'files', 'cause', 'temp', 'perm', 'result', 'note'].some((k) => String(p[k] || '').trim());
+      const any = ['problem', 'cause', 'temp', 'perm', 'result', 'note'].some((k) => String(p[k] || '').trim());
       if (!any) return;
       body.append(h('div', { class: 'panel problem' },
         h('div', { class: 'panel-title row' }, h('span', {}, `問題 ${i + 1}`), p.remain ? h('span', { class: 'badge-remain' }, '已轉殘件') : null),
-        roField('問題描述', p.problem), roFiles('圖片', p.images, true), roFiles('附件', p.files, false),
+        roField('問題描述', p.problem),
         roField('發生原因', p.cause), roField('暫定對策', p.temp), roField('永久對策', p.perm),
         roField('處理結果', p.result), roField('備註', p.note)));
     });
@@ -1048,7 +1052,7 @@
           return {
             id: Store.newId('RI'), saved: true, date: String(res.start || '').slice(0, 10) || todayISO(), code: res.code, name: res.name,
             problem: p.problem, cause: p.cause, temp: p.temp, perm: p.perm, ecn: '', dept: '', owner: '', due: '', progress: '',
-            status: 'Open', note: '', files: [p.images, p.files].filter(Boolean).join('\n'), src: `${res.id} #${i + 1}`, author: myName(), authorEmail: myEmail(),
+            status: 'Open', note: '', files: [res.images, res.files].filter(Boolean).join('\n'), src: `${res.id} #${i + 1}`, author: myName(), authorEmail: myEmail(),
           };
         });
         d.remains.push(...items);

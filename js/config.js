@@ -27,8 +27,8 @@ window.APP_CONFIG = {
     { key: 'members', title: '協同作業人員', kind: 'c' },
     { key: 'work', title: '工作內容', kind: 'w', head: true },
     { key: 'problem', title: '問題描述', kind: 'w', prob: true },
-    { key: 'images', title: '圖片', kind: 'w', prob: true },
-    { key: 'files', title: '附件', kind: 'w', prob: true },
+    { key: 'images', title: '圖片', kind: 'w', head: true },   // 整份履歷共用(放在工作內容下方),只寫第一列
+    { key: 'files', title: '附件', kind: 'w', head: true },
     { key: 'cause', title: '發生原因', kind: 'w', prob: true },
     { key: 'temp', title: '暫定對策', kind: 'w', prob: true },
     { key: 'perm', title: '永久對策', kind: 'w', prob: true },

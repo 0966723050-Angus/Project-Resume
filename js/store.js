@@ -424,6 +424,7 @@
     return `${prefix}${_row}-${hash(JSON.stringify(vals))}`;
   };
 
+  const MERGE_KEYS = ['images', 'files'];
   function groupResumes(rows) {
     const map = new Map();
     for (const rec of rows) {
@@ -434,7 +435,12 @@
         for (const k of HEAD_KEYS) r[k] = '';
         map.set(id, r);
       }
-      for (const k of HEAD_KEYS) if ((r[k] === '' || r[k] == null) && rec[k] != null) r[k] = rec[k];
+      for (const k of HEAD_KEYS) {
+        if (MERGE_KEYS.includes(k)) { // 圖片/附件:舊資料可能分散在各問題列 → 合併(去重)
+          const lines = [...String(r[k] || '').split('\n'), ...String(rec[k] ?? '').split('\n')].map((x) => x.trim()).filter(Boolean);
+          r[k] = [...new Set(lines)].join('\n');
+        } else if ((r[k] === '' || r[k] == null) && rec[k] != null) r[k] = rec[k];
+      }
       const p = {};
       for (const k of PROB_KEYS) p[k] = rec[k] ?? '';
       r.problems.push(p);
