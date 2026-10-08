@@ -347,3 +347,4 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 .app-header .nav-btn { width: 32px; font-size: 28px; line-height: 1; font-weight: 300; padding: 0 0 4px; }
 .app-header .nav-btn:disabled { opacity: .35; cursor: default; }
 .btn.wide.pm-remain { margin: 0 0 12px; }
+.btn.wide.back-pm { margin: 0 0 8px; }

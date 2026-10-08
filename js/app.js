@@ -1131,6 +1131,8 @@
       .sort((a, b) => (a.status === 'Close') - (b.status === 'Close') || String(b.date || '').localeCompare(String(a.date || '')));
   }
   function renderRemainList() {
+    // 從專案管理切過來時(且仍選同一專案)顯示「返回專案管理」
+    $('backToPm').hidden = !(S.pmReturn && S.pmReturn.row && isAdmin() && $('rProject').value === S.pmReturn.code);
     const items = currentRemains();
     const box = $('remainList');
     box.innerHTML = '';
@@ -1414,6 +1416,7 @@
     sel.addEventListener('change', () => { obj[stKey] = sel.value; paint(); markDirty(); });
     return h('div', { class: 'field' }, h('span', { class: 'flabel' }, label), h('div', { class: 'ds-row' }, date, sel));
   }
+  $('backToPm').onclick = () => { const r = S.pmReturn; S.pmReturn = null; go(r && r.row ? '#/pm/' + r.row : '#/pm'); };
   // 殘件鍵:顯示此專案代號的殘件筆數,按下切到殘件項目頁(已選好此專案)
   function updatePmRemainBtn() {
     const code = String((editing && editing.obj.code) || '').trim();
@@ -1425,7 +1428,9 @@
   }
   $('pmRemainBtn').onclick = () => {
     const code = String(editing.obj.code || '').trim();
-    if (code) go('#/remain?p=' + encodeURIComponent(code));
+    if (!code) return;
+    S.pmReturn = { row: editing.obj._row, code }; // 殘件頁顯示「返回專案管理」
+    go('#/remain?p=' + encodeURIComponent(code));
   };
   const pmTitle = (o, isNew) => (isNew && !o.code ? '新增專案' : [o.code, o.name].filter(Boolean).join(' ') + ' 專案管理');
 
