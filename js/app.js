@@ -1618,6 +1618,9 @@
     showView('schedView', { title: `${code} Schedule`, sub: pmRec ? pmRec.name : '', back, save: true });
     $('schedChart').hidden = true;
     renderSchedForm();
+    // 上次繪製的圖直接顯示(舊資料沒有存圖時,用已存的排程畫)
+    const chart = saved && (saved.chart || (saved.items && saved.items.length ? saved : null));
+    if (chart) renderChart(chart);
     markDirty();
     Gantt.prefetch(); // 背景先下載 PDF 字型
   }
@@ -1736,13 +1739,20 @@
     const o = editing.obj;
     return { title: o.title, start: o.start, end: o.end, items: o.items.filter((it) => it.name || it.start || it.days) };
   };
-  function drawSched() {
-    const d = schedData();
-    if (!d.items.length) return toast('請先新增工作項目');
+  let shownChart = null; // 目前畫面上的圖(換顏色時用它重畫)
+  function renderChart(d) {
+    shownChart = d;
     const box = $('schedChart');
     box.innerHTML = Gantt.svg(d, S.sched.data.colors) + '<div class="chart-tip">點圖可全螢幕檢視</div>';
     box.hidden = false;
-    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return box;
+  }
+  // 繪圖:依目前的設定重新繪製,並把排程與這張圖一起存回雲端(下次進入直接顯示,不用再按繪圖)
+  async function drawSched() {
+    const d = schedData();
+    if (!d.items.length) return toast('請先新增工作項目');
+    renderChart(d).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    await saveSched({ chart: clone(d) });
   }
   $('schedDraw').onclick = drawSched;
   // 點長條圖:全螢幕檢視(手機橫放可放大,可雙指縮放)
@@ -1790,18 +1800,23 @@
     try {
       await schedCommit('儲存顏色…', (d) => { d.colors = { ...d.colors, ...colors }; });
       toast('✅ 顏色已儲存');
-      if (!$('schedChart').hidden) drawSched();
+      if (!$('schedChart').hidden && shownChart) renderChart(shownChart);
     } catch (err) { toast('儲存失敗:' + errMsg(err), 6000); }
   };
 
-  async function saveSched() {
+  async function saveSched(opts = {}) {
     const obj = editing.obj;
     const rec = {
       title: obj.title, start: obj.start, end: obj.end, updated: new Date().toISOString(),
       items: obj.items.filter((it) => it.name || it.start || it.days).map((it) => ({ name: it.name, days: it.days, start: it.start })),
     };
     try {
-      await schedCommit('儲存 Schedule…', (d) => { d.schedules[obj.code] = rec; });
+      await schedCommit(opts.chart ? '繪圖並儲存…' : '儲存 Schedule…', (d) => {
+        // 最後一次繪圖的內容:有重新繪圖就換新,只按儲存則保留上次的圖
+        const prev = d.schedules[obj.code];
+        const chart = opts.chart || (prev && prev.chart);
+        d.schedules[obj.code] = chart ? { ...rec, chart } : rec;
+      });
     } catch (err) { toast('儲存失敗:' + errMsg(err), 6000); return false; }
     editing.isNew = false;
     editing.snapshot = JSON.stringify(editing.obj);
