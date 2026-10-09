@@ -393,3 +393,7 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 .chart-full-bar .icon-btn { color: #fff; }
 .chart-full-body { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; touch-action: pinch-zoom pan-x pan-y; padding: 4px; }
 .chart-full-body svg { width: 100%; height: auto; max-height: 100%; }
+/* Schedule 可收合區塊 */
+.sched-sec summary { gap: 8px; }
+.sched-sec .sec-sum { margin-left: auto; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.sched-sec .sec-hint { margin: -2px 0 8px; font-size: 12.5px; }

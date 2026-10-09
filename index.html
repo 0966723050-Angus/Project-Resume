@@ -177,15 +177,17 @@
     <!-- 專案 Schedule(只有管理者) -->
     <section id="schedView" class="view" hidden>
       <form id="schedForm" autocomplete="off" onsubmit="return false">
-        <div class="panel">
-          <h3 class="panel-title">Schedule 設定</h3>
+        <!-- 可收合區塊(預設收合);標題列顯示摘要 -->
+        <details class="panel list-panel sched-sec">
+          <summary class="panel-title">Schedule 設定<span id="schedHeadSum" class="sec-sum"></span></summary>
           <div id="schedHead" class="fields pm-grid"></div>
-        </div>
-        <div class="panel">
-          <h3 class="panel-title">工作項目 <span class="hint">(按住左側 ≡ 可拖曳調整順序)</span></h3>
+        </details>
+        <details class="panel list-panel sched-sec">
+          <summary class="panel-title">工作項目<span id="schedItemSum" class="count"></span></summary>
+          <div class="hint sec-hint">按住左側 ≡ 可拖曳調整順序</div>
           <div id="schedItems" class="sched-items"></div>
           <button id="schedAdd" class="btn btn-ghost wide sched-add" type="button">＋ 工作項目</button>
-        </div>
+        </details>
         <div class="toolbar sched-tools">
           <button id="schedDraw" class="btn btn-primary btn-sm" type="button">📊 繪圖</button>
           <button id="schedPdf" class="btn btn-ghost btn-sm" type="button">⬇️ 匯出 PDF</button>

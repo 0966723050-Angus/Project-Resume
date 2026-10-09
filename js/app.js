@@ -1617,6 +1617,7 @@
     const back = S.schedReturn && S.schedReturn.code === code && S.schedReturn.row ? '#/pm/' + S.schedReturn.row : '#/pm';
     showView('schedView', { title: `${code} Schedule`, sub: pmRec ? pmRec.name : '', back, save: true });
     $('schedChart').hidden = true;
+    for (const d of document.querySelectorAll('.sched-sec')) d.open = false; // 每次進入都先收合
     renderSchedForm();
     // 上次繪製的圖直接顯示(舊資料沒有存圖時,用已存的排程畫)
     const chart = saved && (saved.chart || (saved.items && saved.items.length ? saved : null));
@@ -1633,7 +1634,10 @@
     const titleF = fText('專案名稱(長條圖標題)', obj, 'title', { onChange: () => { hint.textContent = Gantt.titleOf(obj); } });
     titleF.append(hint);
     titleF.classList.add('span2');
-    box.append(titleF, fDate('長條圖起始日期', obj, 'start'), fDate('長條圖結束日期', obj, 'end'),
+    // 收合時標題列顯示期間摘要
+    const upSum = () => { $('schedHeadSum').textContent = (obj.start || obj.end) ? `${fmtDate(obj.start) || '?'} ~ ${fmtDate(obj.end) || '?'}` : ''; };
+    upSum();
+    box.append(titleF, fDate('長條圖起始日期', obj, 'start', { onChange: upSum }), fDate('長條圖結束日期', obj, 'end', { onChange: upSum }),
       h('div', { class: 'hint-line span2' }, '長條圖以 7 天為一格,週一為每週第一天,日期標在每週一'));
     renderSchedItems();
   }
@@ -1642,6 +1646,7 @@
     const obj = editing.obj;
     const box = $('schedItems');
     box.innerHTML = '';
+    $('schedItemSum').textContent = `${obj.items.length} 項`;
     obj.items.forEach((it, i) => {
       const endOut = h('input', { type: 'text', readonly: true, class: 'sched-end', tabindex: '-1', 'aria-label': '結束日期' });
       const upEnd = () => { endOut.value = fmtDate(Gantt.endOf(it)); };
