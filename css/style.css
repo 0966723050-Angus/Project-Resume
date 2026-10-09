@@ -373,9 +373,9 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 .sched-dates .sched-end { background: transparent; color: var(--muted); }
 .btn.wide.sched-add { margin-top: 10px; }
 .sched-tools { margin-top: 4px; }
-.sched-chart { margin-top: 12px; overflow-x: auto; background: #fff; border: 1px solid var(--border); border-radius: 12px; -webkit-overflow-scrolling: touch; }
-.sched-chart svg { display: block; width: 1191px; max-width: none; height: auto; }
-@media (min-width: 1240px) { .sched-chart svg { width: 100%; } }
+.sched-chart { margin-top: 12px; background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+/* 長條圖依螢幕寬度自動縮放(保持 A3 比例) */
+.sched-chart svg { display: block; width: 100%; max-width: 100%; height: auto; }
 .color-list { display: flex; flex-direction: column; gap: 6px; white-space: normal; }
 .color-row { display: flex; align-items: center; gap: 10px; color: var(--text); cursor: pointer; }
 .color-row input[type="color"] { width: 44px; height: 30px; border: 1px solid var(--border); border-radius: 6px; padding: 0; background: none; flex: none; }
@@ -385,3 +385,11 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
   .sched-dates label:last-child input { min-height: 30px; padding: 2px 4px; border: 0; width: auto; flex: 1; }
   .sched-dates input { font-size: 16px; }
 }
+.sched-chart { cursor: zoom-in; }
+.chart-tip { font-size: 12px; color: #6b7280; text-align: center; padding: 4px 0 6px; }
+@media (min-width: 900px) { .chart-tip { display: none; } }
+.chart-full { position: fixed; inset: 0; z-index: 66; background: #fff; display: flex; flex-direction: column; }
+.chart-full-bar { display: flex; align-items: center; justify-content: space-between; padding: calc(4px + env(safe-area-inset-top, 0px)) 8px 4px 14px; background: #1f2937; color: #fff; font-size: 13px; }
+.chart-full-bar .icon-btn { color: #fff; }
+.chart-full-body { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; touch-action: pinch-zoom pan-x pan-y; padding: 4px; }
+.chart-full-body svg { width: 100%; height: auto; max-height: 100%; }

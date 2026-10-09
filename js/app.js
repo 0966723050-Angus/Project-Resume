@@ -1740,11 +1740,19 @@
     const d = schedData();
     if (!d.items.length) return toast('請先新增工作項目');
     const box = $('schedChart');
-    box.innerHTML = Gantt.svg(d, S.sched.data.colors);
+    box.innerHTML = Gantt.svg(d, S.sched.data.colors) + '<div class="chart-tip">點圖可全螢幕檢視</div>';
     box.hidden = false;
     box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   $('schedDraw').onclick = drawSched;
+  // 點長條圖:全螢幕檢視(手機橫放可放大,可雙指縮放)
+  $('schedChart').onclick = () => {
+    const svgEl = $('schedChart').querySelector('svg');
+    if (!svgEl) return;
+    $('chartFullBody').innerHTML = svgEl.outerHTML;
+    $('chartFull').hidden = false;
+  };
+  $('chartFullClose').onclick = () => { $('chartFull').hidden = true; $('chartFullBody').innerHTML = ''; };
 
   $('schedPdf').onclick = async () => {
     const d = schedData();
