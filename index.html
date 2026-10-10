@@ -165,10 +165,17 @@
           <button id="pmSchedBtn" class="btn btn-ghost" type="button">📅 Schedule</button>
         </div>
         <div id="pmFields"></div>
-        <div id="pmTracks"></div>
-        <div class="form-actions">
-          <button id="pmAddTrack" class="btn btn-ghost" type="button">＋ 新增追蹤事項</button>
-        </div>
+        <!-- 追蹤事項:可收合(預設收合),標題顯示 Open 件數;預設只列 Open,可切換 Close / 全部 -->
+        <details id="pmTrackSec" class="panel list-panel pm-track-sec">
+          <summary class="panel-title"><span id="pmTrackSum">追蹤事項(0)</span></summary>
+          <div class="track-filter">
+            <span class="flabel">顯示</span>
+            <div id="pmTrackFilter" class="opt-chips"></div>
+          </div>
+          <div id="pmTracks"></div>
+          <div id="pmTrackEmpty" class="empty small" hidden></div>
+          <button id="pmAddTrack" class="btn btn-ghost wide sched-add" type="button">＋ 追蹤事項</button>
+        </details>
         <div id="pmClosedBox" class="panel"></div>
         <button id="pmDelete" class="btn btn-danger-ghost wide" type="button">刪除此列</button>
       </form>

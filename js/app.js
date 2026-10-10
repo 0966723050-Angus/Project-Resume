@@ -382,14 +382,14 @@
     return f;
   }
   // 固定選項(按鈕式)
-  function fChips(label, obj, key, options) {
+  function fChips(label, obj, key, options, { onChange } = {}) {
     const box = h('div', { class: 'opt-chips' });
     const render = () => {
       box.innerHTML = '';
       for (const o of options) {
         box.append(h('button', {
           type: 'button', class: (obj[key] === o ? 'on ' : '') + 'chip-' + o.toLowerCase(),
-          onclick: () => { obj[key] = obj[key] === o ? '' : o; render(); markDirty(); },
+          onclick: () => { obj[key] = obj[key] === o ? '' : o; render(); markDirty(); if (onChange) onChange(obj[key]); },
         }, o));
       }
     };
@@ -1402,11 +1402,13 @@
       const r = S.pm.data.records.find((x) => x._row === Number(id));
       if (!r) { toast('找不到此列(可能已被刪除或移動,請重新查詢)', 4000); replaceHash('#/pm'); showPmList(); return; }
       obj = clone(r);
+      for (const t of obj.tracks) t._loaded = true; // 從 Excel 讀進來的追蹤事項(即使只有狀態)存檔時一律保留
     }
-    if (!obj.tracks.length) obj.tracks.push(blankTrack());
     editing = { type: 'pm', obj, snapshot: JSON.stringify(obj), isNew, uploads: [] };
     $('pmDelete').hidden = isNew;
-    showView('pmEditView', { title: pmTitle(obj, isNew), sub: pmFileLine(), back: '#/pm', save: true });
+    showView('pmEditView', { title: pmTitle(obj, isNew), sub: obj.name || '', back: '#/pm', save: true });
+    S.pmTrackFilter = 'Open';
+    $('pmTrackSec').open = false; // 追蹤事項每次進入先收合
     if (!isNew) renderPmNav(obj._row);
     renderPmForm();
     markDirty();
@@ -1435,7 +1437,7 @@
     const list = code ? S.data.remains.filter((r) => r.code === code) : [];
     const open = list.filter((r) => (r.status || 'Open') !== 'Close').length;
     b.disabled = !code;
-    b.textContent = code ? `🧩 殘件項目(Open ${open} / 共 ${list.length})` : '🧩 殘件項目';
+    b.textContent = code ? `🧩 殘件項目(${open})` : '🧩 殘件項目';
     $('pmSchedBtn').disabled = !code;
     $('pmSchedBtn').title = code ? '' : '請先填專案代號';
   }
@@ -1445,11 +1447,12 @@
     S.pmReturn = { row: editing.obj._row, code }; // 殘件頁顯示「返回專案管理」
     go('#/remain?p=' + encodeURIComponent(code));
   };
-  const pmTitle = (o, isNew) => (isNew && !o.code ? '新增專案' : [o.code, o.name].filter(Boolean).join(' ') + ' 專案管理');
+  // 頁首:第一行專案代號、第二行專案名稱(手機寬度不夠時才看得完整)
+  const pmTitle = (o, isNew) => (isNew && !o.code ? '新增專案' : o.code || '(未填代號)');
 
   function renderPmForm() {
     const obj = editing.obj;
-    const upTitle = () => { setTitle(pmTitle(obj, editing.isNew), pmFileLine()); updatePmRemainBtn(); };
+    const upTitle = () => { setTitle(pmTitle(obj, editing.isNew), obj.name || ''); updatePmRemainBtn(); };
     // 專案代號 → 帶入專案名稱與年度
     const findName = (code) => {
       const c = String(code || '').trim().toLowerCase();
@@ -1494,31 +1497,55 @@
     cb.innerHTML = '';
     cb.append(fChips('結案', obj, 'closed', CFG.PM.CLOSED_OPTIONS));
   }
+  const isClosed = (t) => String(t.status || '').toLowerCase() === 'close';
+  const TRACK_FILTERS = [['Open', 'Open'], ['Close', 'Close'], ['all', '全部']];
   function renderPmTracks() {
     const obj = editing.obj;
+    const filter = S.pmTrackFilter || 'Open';
+    $('pmTrackSum').textContent = `追蹤事項(${obj.tracks.filter((t) => !isClosed(t)).length})`;
+    // 查詢(依狀態):Open / Close / 全部
+    const fb = $('pmTrackFilter');
+    fb.innerHTML = '';
+    for (const [v, label] of TRACK_FILTERS) {
+      const n = v === 'all' ? obj.tracks.length : obj.tracks.filter((t) => (v === 'Close') === isClosed(t)).length;
+      fb.append(h('button', { type: 'button', class: filter === v ? 'on' : '', onclick: () => { S.pmTrackFilter = v; renderPmTracks(); } }, `${label} ${n}`));
+    }
     const box = $('pmTracks');
     box.innerHTML = '';
+    let shown = 0;
     obj.tracks.forEach((t, i) => {
+      if (filter === 'Open' && isClosed(t)) return;   // Close 的事項隱藏
+      if (filter === 'Close' && !isClosed(t)) return;
+      shown++;
       const del = h('button', {
         type: 'button', class: 'link-btn danger', onclick: async () => {
           if (!(await confirmYes('刪除追蹤事項', `確定刪除追蹤事項 ${i + 1}?`, '刪除', 'btn-danger'))) return;
           obj.tracks.splice(i, 1);
-          if (!obj.tracks.length) obj.tracks.push(blankTrack());
           renderPmTracks();
           markDirty();
         },
       }, '刪除');
-      box.append(h('div', { class: 'panel problem' },
+      box.append(h('div', { class: 'panel problem' + (isClosed(t) ? ' track-closed' : '') },
         h('div', { class: 'panel-title row' }, h('span', {}, `追蹤事項 ${i + 1}`), h('span', { class: 'grow' }), del),
         h('div', { class: 'fields' },
           fText('追蹤確認事項', t, 'item', { multi: true }),
           fText('進度與結果', t, 'progress', { multi: true }),
           fDate('期限', t, 'due'),
-          fChips('狀態', t, 'status', CFG.STATUS_OPTIONS))));
+          fChips('狀態', t, 'status', CFG.STATUS_OPTIONS, {
+            onChange: () => {
+              // 改成 Close 時,在「Open」檢視中隱藏
+              if (isClosed(t) && filter === 'Open') toast(`追蹤事項 ${i + 1} 已 Close,已隱藏(可切換「Close」或「全部」查看)`, 3500);
+              renderPmTracks();
+            },
+          }))));
     });
+    const empty = $('pmTrackEmpty');
+    empty.hidden = shown > 0;
+    empty.textContent = !obj.tracks.length ? '尚無追蹤事項,按下方「＋ 追蹤事項」新增' : filter === 'Close' ? '沒有已 Close 的追蹤事項' : '沒有 Open 的追蹤事項';
   }
   $('pmAddTrack').onclick = () => {
     editing.obj.tracks.push(blankTrack());
+    if (S.pmTrackFilter === 'Close') S.pmTrackFilter = 'Open'; // 新增的是 Open,切回看得到的檢視
     renderPmTracks();
     markDirty();
     const panels = $('pmTracks').children;
@@ -1531,7 +1558,8 @@
     if (!String(obj.code || '').trim()) { toast('請填寫專案代號'); return false; }
     const rec = clone(obj);
     // 空白的追蹤事項(只剩預設狀態)不寫入
-    rec.tracks = rec.tracks.filter((t) => t.item || t.progress || t.due);
+    // 新增後沒填任何內容的追蹤事項不寫入;原本就有的(例如只有「狀態」)保留
+    rec.tracks = rec.tracks.filter((t) => t._loaded || t.item || t.progress || t.due).map(({ _loaded, ...t }) => t);
     try {
       await pmCommit('儲存專案管理…', { type: 'save', rec });
     } catch (err) { toast('儲存失敗:' + errMsg(err), 6000); return false; }
@@ -1540,12 +1568,12 @@
       : S.pm.data.records.find((x) => x._row === rec._row);
     editing.isNew = false;
     editing.obj = clone(saved);
-    if (!editing.obj.tracks.length) editing.obj.tracks.push(blankTrack());
+    for (const t of editing.obj.tracks) t._loaded = true;
     editing.snapshot = JSON.stringify(editing.obj);
     replaceHash('#/pm/' + saved._row);
     renderPmNav(saved._row);
     $('pmDelete').hidden = false;
-    setTitle(pmTitle(saved, false), pmFileLine());
+    setTitle(pmTitle(saved, false), saved.name || '');
     renderPmForm();
     markDirty();
     toast('✅ 已儲存到雲端硬碟');
