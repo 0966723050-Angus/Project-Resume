@@ -406,3 +406,12 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 .pm-track-sec .track-filter .opt-chips button { min-width: 0; padding: 6px 14px; font-size: 14px; }
 .pm-track-sec .panel.problem { box-shadow: none; }
 .track-closed { opacity: .7; }
+
+/* iPhone Safari:日期欄預設有最小寬度且置中顯示,會撐出區塊 → 取消原生外觀、限制寬度、文字靠左 */
+input[type="date"], input[type="datetime-local"] {
+  -webkit-appearance: none; appearance: none; box-sizing: border-box;
+  min-width: 0; max-width: 100%; display: block; text-align: left;
+}
+input[type="date"]::-webkit-date-and-time-value, input[type="datetime-local"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+.sched-dates input[type="date"] { width: 100%; background: var(--surface); }
+.sched-dates label, .sched-dates > * { min-width: 0; overflow: hidden; }
