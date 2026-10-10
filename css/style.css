@@ -371,7 +371,7 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 .sched-dates label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sched-dates input { width: 100%; min-width: 0; min-height: 40px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 6px 8px; font-size: 15px; }
 /* 結束日期(自動):樣式同起始日期,只是不能編輯 */
-.sched-dates .sched-end { background: var(--surface-2); color: var(--text); cursor: default; }
+.sched-dates .sched-end { background: var(--surface); color: var(--text); }
 .btn.wide.sched-add { margin-top: 10px; }
 .sched-tools { margin-top: 4px; }
 .sched-chart { margin-top: 12px; background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }

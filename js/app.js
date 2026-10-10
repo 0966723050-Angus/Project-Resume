@@ -1676,11 +1676,31 @@
     box.innerHTML = '';
     $('schedItemSum').textContent = `${obj.items.length} 項`;
     obj.items.forEach((it, i) => {
-      const endOut = h('input', { type: 'text', readonly: true, class: 'sched-end', tabindex: '-1', 'aria-label': '結束日期' });
-      const upEnd = () => { endOut.value = fmtDate(Gantt.endOf(it)); };
+      // 結束日期:工期/起始日期改變時自動算;也可手動選擇,此時改由工期自動調整(結束 − 起始 + 1 天)
+      const endOut = h('input', { type: 'date', class: 'sched-end', 'aria-label': '結束日期' });
+      const upEnd = () => { endOut.value = Gantt.endOf(it) || ''; };
       upEnd();
       const days = h('input', { type: 'number', min: '1', step: '1', inputmode: 'numeric', 'aria-label': '工期(天)', placeholder: '天' });
       days.value = it.days ?? '';
+      const DAYMS = 86400000;
+      const toT = (v) => Date.parse(v + 'T00:00:00Z');
+      endOut.addEventListener('change', () => {
+        const e = endOut.value;
+        if (!e) { upEnd(); return; }
+        if (!it.start) {
+          // 沒有起始日期:有工期就往回推起始日,沒有工期則從結束日當天開始(1 天)
+          const n = Math.max(1, Math.round(Number(it.days)) || 1);
+          it.start = new Date(toT(e) - (n - 1) * DAYMS).toISOString().slice(0, 10);
+          start.value = it.start;
+          it.days = String(n);
+        } else {
+          const n = Math.round((toT(e) - toT(it.start)) / DAYMS) + 1;
+          if (n < 1) { toast('結束日期不能早於起始日期'); upEnd(); return; }
+          it.days = String(n);
+        }
+        days.value = it.days;
+        markDirty();
+      });
       days.addEventListener('input', () => { it.days = days.value; upEnd(); markDirty(); });
       const start = h('input', { type: 'date', 'aria-label': '起始日期' });
       start.value = it.start || '';
@@ -1702,7 +1722,7 @@
         h('div', { class: 'sched-dates' },
           h('label', {}, h('span', { class: 'flabel' }, '工期(天)'), days),
           h('label', {}, h('span', { class: 'flabel' }, '起始日期'), start),
-          h('label', {}, h('span', { class: 'flabel' }, '結束日期(自動)'), endOut)));
+          h('label', {}, h('span', { class: 'flabel' }, '結束日期'), endOut)));
       startDrag(handle, row);
       box.append(row);
     });
