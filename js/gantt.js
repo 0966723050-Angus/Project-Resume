@@ -80,11 +80,11 @@
     // 每週線 + 週一日期(置中對齊週一那一天)
     const weeks = [];
     for (let t = t0; t <= t1; t += 7 * DAY) weeks.push(t);
-    const dateSize = Math.max(7.5, Math.min(10.5, dayW * 7 * 0.3));
+    const dateSize = Math.max(7, Math.min(9, dayW * 7 * 0.26)); // 日期字較小
     const step = Math.max(1, Math.ceil((measure('12/31', dateSize) + 6) / (dayW * 7)));
     weeks.forEach((t, k) => {
       const x = xOf(t);
-      if (k > 0) line(x, top + MONTH_H, x, tableBottom, C.week, 0.7); // 週線貫穿日期列(每週一欄)
+      if (k > 0) line(x, rowsTop, x, tableBottom, C.week, 0.7); // 週線只在表身,不進日期列
       if (k % step === 0) {
         const d = new Date(t);
         // 日期置中於週一(每週的起點),週線貫穿日期列
@@ -99,8 +99,7 @@
       const next = Date.UTC(md.getUTCFullYear(), md.getUTCMonth() + 1, 1);
       const a = Math.max(m, t0), b = Math.min(next - DAY, t1);
       const xa = xOf(a), xb = xOf(b) + dayW;
-      // 月份線:月份列與表身;日期列只畫週線(月界多在週中,會壓到日期字)
-      if (m > t0) { line(xa, top, xa, top + MONTH_H, C.month, 0.9); line(xa, rowsTop, xa, tableBottom, C.month, 0.9); }
+      if (m > t0) line(xa, top, xa, tableBottom, C.month, 0.9); // 月份線貫穿月份列、日期列與表身
       const label = `${md.getUTCFullYear()}/${String(md.getUTCMonth() + 1).padStart(2, '0')}`;
       const ms = 11;
       if (xb - xa > measure(label, ms) + 8) text((xa + xb) / 2, top + MONTH_H / 2 + ms * 0.36, label, ms, { anchor: 'middle', color: C.headText });
