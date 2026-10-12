@@ -715,14 +715,15 @@
     let obj, isNew = false;
     if (id === 'new') {
       isNew = true;
-      obj = { id: Store.newId('PR'), saved: true, code: '', name: '', plant: '', line: '', equip: '', unit: '', stage: '', start: nowRounded(), end: '', hours: '', members: '', work: '', images: '', files: '', problems: [blankProblem()], author: myName(), authorEmail: myEmail(), shareKey: newShareKey() };
+      obj = { id: Store.newId('PR'), saved: true, code: '', name: '', plant: '', line: '', equip: '', unit: '', stage: '', start: nowRounded(), end: '', hours: '', members: '', work: '', images: '', files: '', problems: [], author: myName(), authorEmail: myEmail(), shareKey: newShareKey() };
     } else {
       const r = S.data.resumes.find((x) => x.id === id);
       if (!r) { toast('找不到此專案履歷(可能已被刪除,或請重新載入)', 4000); replaceHash('#/'); showList(); return; }
       // 不是填表人(也不是管理者)→ 唯讀
       if (!canEdit(r)) { replaceHash('#/v/' + encodeURIComponent(id)); viewResume(id); return; }
       obj = clone(r);
-      if (!obj.problems.length) obj.problems.push(blankProblem());
+      // 不預設問題區塊:完全空白的問題(沒有問題的履歷在 Excel 仍佔一列)不顯示,按「＋ 新增問題」才列出
+      obj.problems = obj.problems.filter((p) => p.remain || ['problem', 'cause', 'temp', 'perm', 'result', 'note'].some((k) => String(p[k] || '').trim()));
     }
     editing = { type: 'resume', obj, snapshot: JSON.stringify(obj), isNew, createdHere: isNew, uploads: [] };
     $('deleteResume').hidden = !isAdmin() || isNew;
@@ -777,7 +778,6 @@
           const msg = p.remain ? `問題 ${i + 1} 已轉為殘件;刪除此問題不會刪除殘件項目。確定刪除?` : `確定刪除問題 ${i + 1}?`;
           if (!(await confirmYes('刪除問題', msg, '刪除', 'btn-danger'))) return;
           obj.problems.splice(i, 1);
-          if (!obj.problems.length) obj.problems.push(blankProblem());
           renderProblems();
           markDirty();
         },
