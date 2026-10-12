@@ -91,20 +91,21 @@
         text(x + dayW / 2, top + MONTH_H + DATE_H / 2 + dateSize * 0.36, `${d.getUTCMonth() + 1}/${d.getUTCDate()}`, dateSize, { anchor: 'middle', color: C.headText });
       }
     });
-    // 月份列(每月一格,月份分隔線較深)
-    const d0 = new Date(t0);
-    let m = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), 1);
-    while (m <= t1) {
-      const md = new Date(m);
-      const next = Date.UTC(md.getUTCFullYear(), md.getUTCMonth() + 1, 1);
-      const a = Math.max(m, t0), b = Math.min(next - DAY, t1);
-      const xa = xOf(a), xb = xOf(b) + dayW;
-      if (m > t0) line(xa, top, xa, tableBottom, C.month, 0.9); // 月份線貫穿月份列、日期列與表身
-      const label = `${md.getUTCFullYear()}/${String(md.getUTCMonth() + 1).padStart(2, '0')}`;
-      const ms = 11;
-      if (xb - xa > measure(label, ms) + 8) text((xa + xb) / 2, top + MONTH_H / 2 + ms * 0.36, label, ms, { anchor: 'middle', color: C.headText });
-      m = next;
+    // 月份列:依週分組(每週算在它的週一所在的月份),月份線一定落在週一的週線上,
+    // 每一格都維持 7 天;月份範圍只是大概
+    const groups = [];
+    for (const t of weeks) {
+      const d = new Date(t);
+      const key = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      if (groups.length && groups[groups.length - 1].key === key) groups[groups.length - 1].last = t;
+      else groups.push({ key, first: t, last: t });
     }
+    groups.forEach((g, i) => {
+      const xa = xOf(g.first), xb = xOf(g.last) + 7 * dayW;
+      if (i > 0) line(xa, top, xa, tableBottom, C.month, 0.9); // 月份線貫穿月份列、日期列與表身
+      const ms = 11;
+      if (xb - xa > measure(g.key, ms) + 8) text((xa + xb) / 2, top + MONTH_H / 2 + ms * 0.36, g.key, ms, { anchor: 'middle', color: C.headText });
+    });
     line(L, rowsTop, R, rowsTop, C.month, 0.9);
     // 工作項目欄
     text(L + LABEL_W / 2, top + (MONTH_H + DATE_H) / 2 + 13 * 0.36, '工作項目', 13, { anchor: 'middle', color: C.headText });
