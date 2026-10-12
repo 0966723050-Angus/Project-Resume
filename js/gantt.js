@@ -84,10 +84,11 @@
     const step = Math.max(1, Math.ceil((measure('12/31', dateSize) + 6) / (dayW * 7)));
     weeks.forEach((t, k) => {
       const x = xOf(t);
-      if (k > 0) line(x, rowsTop, x, tableBottom, C.week, 0.7); // 不穿過日期列,日期字才清楚
+      if (k > 0) line(x, top + MONTH_H, x, tableBottom, C.week, 0.7); // 週線貫穿日期列(每週一欄)
       if (k % step === 0) {
         const d = new Date(t);
-        text(x + dayW / 2, top + MONTH_H + DATE_H / 2 + dateSize * 0.36, `${d.getUTCMonth() + 1}/${d.getUTCDate()}`, dateSize, { anchor: 'middle', color: C.headText });
+        // 日期置中於該週欄位(兩條週線之間),線不會壓到字
+        text(x + dayW * 3.5, top + MONTH_H + DATE_H / 2 + dateSize * 0.36, `${d.getUTCMonth() + 1}/${d.getUTCDate()}`, dateSize, { anchor: 'middle', color: C.headText });
       }
     });
     // 月份列(每月一格,月份分隔線較深)
@@ -98,6 +99,7 @@
       const next = Date.UTC(md.getUTCFullYear(), md.getUTCMonth() + 1, 1);
       const a = Math.max(m, t0), b = Math.min(next - DAY, t1);
       const xa = xOf(a), xb = xOf(b) + dayW;
+      // 月份線:月份列與表身;日期列只畫週線(月界多在週中,會壓到日期字)
       if (m > t0) { line(xa, top, xa, top + MONTH_H, C.month, 0.9); line(xa, rowsTop, xa, tableBottom, C.month, 0.9); }
       const label = `${md.getUTCFullYear()}/${String(md.getUTCMonth() + 1).padStart(2, '0')}`;
       const ms = 11;

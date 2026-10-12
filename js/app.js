@@ -1635,10 +1635,13 @@
     } catch (err) { busy(''); toast(errMsg(err), 6000); replaceHash('#/pm'); showPmList(); return; } finally { busy(''); }
     const pmRec = S.pm.data.records.find((r) => r.code === code);
     const saved = S.sched.data.schedules[code];
-    const obj = saved ? clone(saved) : {
-      title: String((pmRec && pmRec.name) || '').trim().replace(/\s+/g, '_'),
-      start: '', end: '', items: [],
-    };
+    // 長條圖標題直接用專案名稱(含空格)
+    const pmName = String((pmRec && pmRec.name) || '').trim();
+    const obj = saved ? clone(saved) : { title: pmName, start: '', end: '', items: [] };
+    // 先前版本預設把空格換成「_」:若標題正是那個自動產生的版本,改回專案名稱
+    const underscored = pmName.replace(/\s+/g, '_');
+    const fixTitle = (o) => { if (o && pmName && o.title === underscored && underscored !== pmName) o.title = pmName; };
+    fixTitle(obj);
     obj.code = code;
     if (!obj.items.length) obj.items.push({ name: '', days: '', start: obj.start || '' });
     editing = { type: 'sched', obj, snapshot: JSON.stringify(obj), isNew: !saved, uploads: [] };
@@ -1648,7 +1651,8 @@
     for (const d of document.querySelectorAll('.sched-sec')) d.open = false; // 每次進入都先收合
     renderSchedForm();
     // 上次繪製的圖直接顯示(舊資料沒有存圖時,用已存的排程畫)
-    const chart = saved && (saved.chart || (saved.items && saved.items.length ? saved : null));
+    const chart = saved && clone(saved.chart || (saved.items && saved.items.length ? saved : null));
+    fixTitle(chart);
     if (chart) renderChart(chart);
     markDirty();
     Gantt.prefetch(); // 背景先下載 PDF 字型
