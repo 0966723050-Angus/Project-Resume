@@ -87,8 +87,8 @@
       if (k > 0) line(x, top + MONTH_H, x, tableBottom, C.week, 0.7); // 週線貫穿日期列(每週一欄)
       if (k % step === 0) {
         const d = new Date(t);
-        // 日期置中於該週欄位(兩條週線之間),線不會壓到字
-        text(x + dayW * 3.5, top + MONTH_H + DATE_H / 2 + dateSize * 0.36, `${d.getUTCMonth() + 1}/${d.getUTCDate()}`, dateSize, { anchor: 'middle', color: C.headText });
+        // 日期置中於週一(每週的起點),週線貫穿日期列
+        text(x + dayW / 2, top + MONTH_H + DATE_H / 2 + dateSize * 0.36, `${d.getUTCMonth() + 1}/${d.getUTCDate()}`, dateSize, { anchor: 'middle', color: C.headText });
       }
     });
     // 月份列(每月一格,月份分隔線較深)
