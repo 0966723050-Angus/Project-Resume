@@ -15,8 +15,9 @@
   const FONT_URL = 'https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/TC/NotoSansTC-Bold.otf';
   const PALETTE = ['#ED7D31', '#00C9B1', '#4472C4', '#F4C430', '#00B050', '#5B9BD5', '#8E9AAF', '#FF66CC', '#7030A0', '#C00000', '#70AD47', '#FFA000', '#264478'];
   const C = {
-    frame: '#374151', border: '#9CA3AF', title: '#111827', sub: '#6B7280', text: '#1F2937', muted: '#6B7280',
-    head: '#E8EDF5', headText: '#1F2937', zebra: '#F7F9FC', day: '#EEF1F5', week: '#CBD2DC', month: '#8B95A5',
+    // 文字一律接近黑色(深色才清楚)
+    frame: '#374151', border: '#9CA3AF', title: '#000000', sub: '#1F2937', text: '#000000', muted: '#1F2937',
+    head: '#E8EDF5', headText: '#000000', zebra: '#F7F9FC', day: '#EEF1F5', week: '#CBD2DC', month: '#8B95A5',
   };
 
   const utc = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null; };
@@ -103,7 +104,6 @@
       if (xb - xa > measure(label, ms) + 8) text((xa + xb) / 2, top + MONTH_H / 2 + ms * 0.36, label, ms, { anchor: 'middle', color: C.headText });
       m = next;
     }
-    line(L, top + MONTH_H, R, top + MONTH_H, C.week, 0.7);
     line(L, rowsTop, R, rowsTop, C.month, 0.9);
     // 工作項目欄
     text(L + LABEL_W / 2, top + (MONTH_H + DATE_H) / 2 + 13 * 0.36, '工作項目', 13, { anchor: 'middle', color: C.headText });
@@ -147,7 +147,7 @@
     for (const p of items) {
       if (p.t === 'rect') out.push(`<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}"${p.r ? ` rx="${p.r}"` : ''} fill="${p.fill || 'none'}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.sw}"` : ''}/>`);
       else if (p.t === 'line') out.push(`<line x1="${p.x1}" y1="${p.y1}" x2="${p.x2}" y2="${p.y2}" stroke="${p.color}" stroke-width="${p.w}"/>`);
-      else out.push(`<text x="${p.x}" y="${p.y}" font-size="${p.size}" fill="${p.color}" text-anchor="${p.anchor}">${esc(p.s)}</text>`);
+      else out.push(`<text x="${p.x}" y="${p.y}" font-size="${p.size}" font-weight="700" fill="${p.color}" text-anchor="${p.anchor}">${esc(p.s)}</text>`);
     }
     out.push('</svg>');
     return out.join('');
