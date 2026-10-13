@@ -1132,7 +1132,7 @@
     if (code && !projects.some(([c]) => c === code)) sel.append(h('option', { value: code }, `${code}(0)`));
     sel.value = code;
     ssSet(LS_RP, code);
-    showView('remainView', { title: '殘件項目', sub: fileLine() });
+    showView('remainView', { title: '追蹤/殘件事項', sub: fileLine() });
     renderRemainList();
   }
   function currentRemains() {

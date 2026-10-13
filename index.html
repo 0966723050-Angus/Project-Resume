@@ -45,7 +45,7 @@
   <aside id="drawer" class="drawer" aria-hidden="true">
     <div class="drawer-brand">ATK專案履歷</div>
     <a class="drawer-item" href="#/" data-nav="list">📋 專案履歷</a>
-    <a class="drawer-item" href="#/remain" data-nav="remain">🧩 殘件項目</a>
+    <a class="drawer-item" href="#/remain" data-nav="remain">🧩 追蹤/殘件事項</a>
     <a class="drawer-item" href="#/pm" data-nav="pm" id="navPm" hidden>📁 專案管理</a>
     <a class="drawer-item" href="#/settings" data-nav="settings" id="navSettings" hidden>⚙️ 設定</a>
     <div class="drawer-foot">
@@ -96,13 +96,13 @@
     <section id="resumeView" class="view" hidden>
       <form id="resumeForm" autocomplete="off" onsubmit="return false">
         <div class="panel">
-          <h3 class="panel-title">基本資料</h3>
+          <h3 class="panel-title">工作報告</h3>
           <div id="headFields" class="fields"></div>
         </div>
         <div id="problemList"></div>
         <div class="form-actions">
           <button id="addProblem" class="btn btn-ghost" type="button">＋ 新增問題</button>
-          <button id="toRemain" class="btn btn-warn" type="button">轉殘件</button>
+          <button id="toRemain" class="btn btn-warn" type="button">轉追蹤/殘件事項</button>
         </div>
         <button id="abandonResume" class="btn btn-ghost wide" type="button">放棄編輯</button>
         <button id="deleteResume" class="btn btn-danger-ghost wide" type="button" hidden>刪除此專案履歷(管理者)</button>
