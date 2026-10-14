@@ -415,3 +415,12 @@ input[type="date"], input[type="datetime-local"] {
 input[type="date"]::-webkit-date-and-time-value, input[type="datetime-local"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
 .sched-dates input[type="date"] { width: 100%; background: var(--surface); }
 .sched-dates label, .sched-dates > * { min-width: 0; overflow: hidden; }
+/* 專案管理:可收合區塊 */
+.pm-sec summary { gap: 8px; }
+.pm-sec .sec-sum, .pm-prog .sec-sum { margin-left: auto; font-size: 12.5px; color: var(--muted); font-weight: 600; text-align: right; }
+.pm-prog { margin: 12px 0; border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--surface-2); }
+.pm-prog > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; font-weight: 700; font-size: 14.5px; }
+.pm-prog > summary::-webkit-details-marker { display: none; }
+.pm-prog > summary::before { content: '▸'; color: var(--muted); }
+.pm-prog[open] > summary::before { content: '▾'; }
+.pm-prog[open] > summary { margin-bottom: 10px; }

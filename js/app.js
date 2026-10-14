@@ -1408,6 +1408,7 @@
     $('pmDelete').hidden = isNew;
     showView('pmEditView', { title: pmTitle(obj, isNew), sub: obj.name || '', back: '#/pm', save: true });
     S.pmTrackFilter = 'Open';
+    S.pmFoldKeep = false;
     $('pmTrackSec').open = false; // 追蹤事項每次進入先收合
     if (!isNew) renderPmNav(obj._row);
     renderPmForm();
@@ -1477,20 +1478,40 @@
     });
     const yearF = fText('年度', obj, 'year', { inputmode: 'numeric' });
     yearInp = yearF.querySelector('input');
-    const panel = (title, ...fields) => h('div', { class: 'panel' }, h('h3', { class: 'panel-title' }, title), h('div', { class: 'fields pm-grid' }, ...fields));
+    // 可收合區塊(每次進入都先收合);標題列右側顯示摘要
+    const fold = (title, sum, ...fields) => h('details', { class: 'panel list-panel pm-sec' },
+      h('summary', { class: 'panel-title' }, title, h('span', { class: 'sec-sum' }, sum || '')), h('div', { class: 'fields pm-grid' }, ...fields));
+    // 進度:6 個日期項目放在可收合的子區塊,摘要顯示各狀態件數
+    const PS = CFG.PM.PROGRESS;
+    const progSum = () => {
+      const c = {};
+      for (const p of PS) if (obj[p.st]) c[obj[p.st]] = (c[obj[p.st]] || 0) + 1;
+      return CFG.PM.PROGRESS_STATUS.filter((k) => c[k]).map((k) => `${k} ${c[k]}`).join('・') || '尚未填寫';
+    };
+    const progBox = h('details', { class: 'pm-prog' },
+      h('summary', {}, `進度項目(${PS.length})`, h('span', { class: 'sec-sum', id: 'pmProgSum' }, progSum())),
+      h('div', { class: 'fields pm-grid' }, ...PS.map((p) => fDateStatus(p.label, obj, p.date, p.st))));
+    progBox.addEventListener('change', () => { $('pmProgSum').textContent = progSum(); });
     const box = $('pmFields');
+    // 存檔後重畫時保留各區塊的展開狀態;剛進入時一律收合
+    const openState = S.pmFoldKeep ? [...box.querySelectorAll('details')].map((d) => d.open) : [];
     box.innerHTML = '';
     box.append(
-      panel('基本資料', codeF, nameF, yearF,
+      fold('基本資料', [obj.part && '品號 ' + obj.part, obj.batch && '批次 ' + obj.batch].filter(Boolean).join('・'), codeF, nameF, yearF,
         fText('產品品號', obj, 'part'), fText('訂單號碼', obj, 'order', { inputmode: 'numeric' }), fText('客戶單號', obj, 'custNo'),
         fText('批次', obj, 'batch', { inputmode: 'numeric' }), fText('數量', obj, 'qty', { inputmode: 'numeric' }),
         fDate('需求日期', obj, 'needDate')),
-      panel('人員', fText('客戶聯絡人', obj, 'contact'), fText('設計擔當人員', obj, 'design'), fText('電控擔當人員', obj, 'elec'),
+      fold('人員', obj.contact ? '客戶 ' + obj.contact : '', fText('客戶聯絡人', obj, 'contact'), fText('設計擔當人員', obj, 'design'), fText('電控擔當人員', obj, 'elec'),
         fText('軟體擔當人員', obj, 'soft'), fText('技術擔當人員', obj, 'tech')),
-      panel('進度', fCombo('階段', obj, 'stage', 'pmStage'), ...CFG.PM.PROGRESS.map((p) => fDateStatus(p.label, obj, p.date, p.st)),
-        fText('現況', obj, 'current', { multi: true }), fText('備註', obj, 'note', { multi: true })),
+      // 進度區塊本身不收合:階段、現況、備註直接顯示,只有中間 6 個日期項目收合
+      h('div', { class: 'panel' }, h('h3', { class: 'panel-title' }, '進度'),
+        h('div', { class: 'fields pm-grid' }, fCombo('階段', obj, 'stage', 'pmStage')),
+        progBox,
+        h('div', { class: 'fields pm-grid' }, fText('現況', obj, 'current', { multi: true }), fText('備註', obj, 'note', { multi: true }))),
     );
     for (const f of box.querySelectorAll('.pm-grid > .field')) if (f.querySelector('textarea')) f.classList.add('span2');
+    [...box.querySelectorAll('details')].forEach((d, i) => { d.open = !!openState[i]; });
+    S.pmFoldKeep = true;
     renderPmTracks();
     updatePmRemainBtn();
     const cb = $('pmClosedBox');
