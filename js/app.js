@@ -1351,12 +1351,19 @@
     fillPmPick();
     renderPmList();
   }
-  // 下拉選單:不重複的「代號 名稱」(依代號排序);選取後以代號查詢
+  // 下拉選單:不重複的「代號 名稱」,依年度、流水號由舊到新(EQ-2260008 → 年度 26、流水號 0008);選取後以代號查詢
+  const codeYearSerial = (c) => {
+    const m = /^[A-Za-z]+-?\d(\d{2})(\d+)/.exec(String(c).trim());
+    return m ? [Number(m[1]), Number(m[2])] : [Infinity, Infinity];
+  };
   function fillPmPick() {
     const sel = $('pmPick');
     const seen = new Map();
     for (const r of S.pm.data.records) if (r.code && !seen.has(r.code)) seen.set(r.code, r.name || '');
-    const codes = [...seen.keys()].sort(Store.compareCode);
+    const codes = [...seen.keys()].sort((a, b) => {
+      const [ya, sa] = codeYearSerial(a), [yb, sb] = codeYearSerial(b);
+      return (ya - yb) || (sa - sb) || Store.compareCode(a, b);
+    });
     sel.innerHTML = '';
     sel.append(h('option', { value: '' }, '📋 從清單選取專案…'), ...codes.map((c) => h('option', { value: c }, `${c} ${seen.get(c)}`)));
     sel.value = seen.has($('pmSearch').value.trim()) ? $('pmSearch').value.trim() : '';
