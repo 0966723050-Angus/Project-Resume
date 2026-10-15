@@ -1348,8 +1348,28 @@
   async function showPmList() {
     try { await pmLoad(); } catch (err) { toast(errMsg(err), 6000); replaceHash('#/'); showList(); return; }
     showView('pmListView', { title: '專案管理', sub: pmFileLine() });
+    fillPmPick();
     renderPmList();
   }
+  // 下拉選單:不重複的「代號 名稱」(依代號排序);選取後以代號查詢
+  function fillPmPick() {
+    const sel = $('pmPick');
+    const seen = new Map();
+    for (const r of S.pm.data.records) if (r.code && !seen.has(r.code)) seen.set(r.code, r.name || '');
+    const codes = [...seen.keys()].sort(Store.compareCode);
+    sel.innerHTML = '';
+    sel.append(h('option', { value: '' }, '📋 從清單選取專案…'), ...codes.map((c) => h('option', { value: c }, `${c} ${seen.get(c)}`)));
+    sel.value = seen.has($('pmSearch').value.trim()) ? $('pmSearch').value.trim() : '';
+  }
+  // 階段顏色:預設清單固定配色,其他依名稱雜湊
+  const STAGE_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#c2410c', '#0891b2', '#16a34a', '#db2777', '#0d9488', '#ca8a04', '#4f46e5', '#9f1239', '#475569'];
+  function stageColor(s) {
+    const i = CFG.CHOICE_DEFAULTS.pmStage.indexOf(s);
+    if (i >= 0) return STAGE_COLORS[i % STAGE_COLORS.length];
+    let n = 0; for (const ch of String(s)) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
+    return STAGE_COLORS[n % STAGE_COLORS.length];
+  }
+  const stageChip = (s) => h('span', { class: 'chip stage-chip', style: `background:${stageColor(s)};border-color:${stageColor(s)}` }, s);
   function renderPmList() {
     const q = $('pmSearch').value.trim();
     const openOnly = $('pmOpenOnly').checked;
@@ -1363,11 +1383,12 @@
       const openTracks = r.tracks.filter((t) => (t.item || t.progress) && t.status !== 'Close').length;
       box.append(h('a', { class: 'card' + (r.closed === '是' ? ' closed' : ''), href: '#/pm/' + r._row },
         h('div', { class: 'card-top' },
-          r.stage ? h('span', { class: 'chip' }, r.stage) : null,
+          r.stage ? stageChip(r.stage) : null,
           r.closed ? h('span', { class: 'status ' + (r.closed === '是' ? 'st-close' : 'st-open') }, r.closed === '是' ? '已結案' : '未結案') : null,
           h('span', { class: 'author' }, r.year || '')),
         h('div', { class: 'card-title' }, h('span', { class: 'code' }, r.code || '(未填代號)'), ' ', r.name || ''),
         h('div', { class: 'card-sub' }, [r.part && '品號 ' + r.part, r.batch && '批次 ' + r.batch, r.qty && '數量 ' + r.qty].filter(Boolean).join(' · ') || ' '),
+        r.needDate ? h('div', { class: 'need-date' + (r.closed !== '是' && /^\d{4}-\d\d-\d\d$/.test(r.needDate) && r.needDate < todayISO() ? ' late' : '') }, '需求日期 ' + r.needDate.replace(/-/g, '/')) : null,
         r.current ? h('div', { class: 'ptext' }, '現況:' + r.current) : null,
         openTracks ? h('div', { class: 'card-foot' }, h('span', { class: 'warn' }, `追蹤中 ${openTracks} 項`)) : null));
     }
@@ -1384,9 +1405,10 @@
   }
   const renderPmNav = (row) => renderNav(pmResults().map((r) => r._row), row, (r) => '#/pm/' + r);
   let pmTimer;
-  $('pmSearch').oninput = () => { clearTimeout(pmTimer); pmTimer = setTimeout(renderPmList, 150); };
+  $('pmSearch').oninput = () => { $('pmPick').value = ''; clearTimeout(pmTimer); pmTimer = setTimeout(renderPmList, 150); };
+  $('pmPick').onchange = () => { $('pmSearch').value = $('pmPick').value; renderPmList(); };
   $('pmOpenOnly').onchange = renderPmList;
-  $('pmClear').onclick = () => { $('pmSearch').value = ''; $('pmOpenOnly').checked = false; renderPmList(); };
+  $('pmClear').onclick = () => { $('pmSearch').value = ''; $('pmPick').value = ''; $('pmOpenOnly').checked = false; renderPmList(); };
   $('pmAdd').onclick = () => go('#/pm/new');
 
   const blankTrack = () => ({ item: '', progress: '', due: '', status: 'Open' });

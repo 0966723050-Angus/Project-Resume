@@ -148,11 +148,12 @@
         <input id="pmSearch" type="search" placeholder="輸入專案代號或專案名稱(可只打部分文字)" aria-label="查詢專案" autocomplete="off">
         <button id="pmClear" class="btn btn-ghost btn-sm" type="button">清除</button>
       </div>
+      <select id="pmPick" class="pm-pick" aria-label="選取專案"></select>
       <div class="quick-dates">
         <label class="pm-open"><input id="pmOpenOnly" type="checkbox"> 只看未結案</label>
       </div>
       <div id="pmCount" class="count-line"></div>
-      <div id="pmHint" class="search-hint">🔍 請輸入專案代號或專案名稱查詢(模糊比對,例如輸入「pre heat」可找到「Mirle Pre-Heat」);<br>按右下「＋ 新增」建立新的專案批次。</div>
+      <div id="pmHint" class="search-hint">🔍 請輸入專案代號或專案名稱查詢,或從上方下拉選單選取專案(模糊比對,例如輸入「pre heat」可找到「Mirle Pre-Heat」);<br>按右下「＋ 新增」建立新的專案批次。</div>
       <div id="pmList" class="card-list"></div>
       <div id="pmEmpty" class="empty" hidden>沒有符合的專案</div>
       <button id="pmAdd" class="fab" type="button">＋ 新增</button>
