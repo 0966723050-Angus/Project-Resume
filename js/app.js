@@ -1369,6 +1369,15 @@
     let n = 0; for (const ch of String(s)) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
     return STAGE_COLORS[n % STAGE_COLORS.length];
   }
+  // 逾期:未結案、需求日期已到(含當天),且階段排在「現地安裝」之前(依階段下拉清單順序;空白視為尚未開始)
+  function isNeedLate(r) {
+    if (r.closed === '是' || !/^\d{4}-\d\d-\d\d$/.test(r.needDate) || r.needDate > todayISO()) return false;
+    let L = lists().pmStage || [];
+    if (!L.includes('現地安裝')) L = CFG.CHOICE_DEFAULTS.pmStage;
+    if (!r.stage) return true;
+    const i = L.indexOf(r.stage);
+    return i >= 0 && i < L.indexOf('現地安裝');
+  }
   const stageChip = (s) => h('span', { class: 'chip stage-chip', style: `background:${stageColor(s)};border-color:${stageColor(s)}` }, s);
   function renderPmList() {
     const q = $('pmSearch').value.trim();
@@ -1388,7 +1397,7 @@
           h('span', { class: 'author' }, r.year || '')),
         h('div', { class: 'card-title' }, h('span', { class: 'code' }, r.code || '(未填代號)'), ' ', r.name || ''),
         h('div', { class: 'card-sub' }, [r.part && '品號 ' + r.part, r.batch && '批次 ' + r.batch, r.qty && '數量 ' + r.qty].filter(Boolean).join(' · ') || ' '),
-        r.needDate ? h('div', { class: 'need-date' + (r.closed !== '是' && /^\d{4}-\d\d-\d\d$/.test(r.needDate) && r.needDate < todayISO() ? ' late' : '') }, '需求日期 ' + r.needDate.replace(/-/g, '/')) : null,
+        r.needDate ? h('div', { class: 'need-date' + (isNeedLate(r) ? ' late' : '') }, '需求日期 ' + r.needDate.replace(/-/g, '/')) : null,
         r.current ? h('div', { class: 'ptext' }, '現況:' + r.current) : null,
         openTracks ? h('div', { class: 'card-foot' }, h('span', { class: 'warn' }, `追蹤中 ${openTracks} 項`)) : null));
     }
