@@ -69,7 +69,7 @@ window.APP_CONFIG = {
     { key: 'lines', title: '線別', kind: 'w' },
     { key: 'done', title: '完工', kind: 'w' },
   ],
-  MAT_STATUS_OPTIONS: ['未到料', '已到料'],
+  MAT_STATUS_OPTIONS: ['未到料', '已到料', '無物料'],
   DONE_OPTIONS: ['是', '否'],
 
   // 已建立的專案履歷/殘件:只有管理者與填表人可修改(其他人唯讀)

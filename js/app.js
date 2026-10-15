@@ -222,7 +222,8 @@
   function listValues(key) {
     if (key === 'code') return lists().projects.filter((p) => p.code).map((p) => ({ value: p.code, label: p.code, sub: p.name }));
     if (key === 'name') return lists().projects.filter((p) => p.name).map((p) => ({ value: p.name, label: p.name, sub: p.code }));
-    return (lists()[key] || []).map((v) => ({ value: v, label: v }));
+    const L = key === 'dept' ? withTech(lists().dept || []) : lists()[key] || []; // 權責區分補「技術」
+    return L.map((v) => ({ value: v, label: v }));
   }
   const listKeyOf = (key) => (key === 'code' || key === 'name' ? 'project' : key);
   async function choiceAdd(key, item) {
@@ -1207,24 +1208,21 @@
   };
   const lineSummary = (r) => { const D = String(r.done || '').split('\n'); return String(r.lines || '').split('\n').map((l, i) => (l || D[i]) ? `${l || '(未填)'}:${D[i] ? (D[i] === '是' ? '已完工' : '未完工') : '—'}` : '').filter(Boolean).join('\n'); };
   const deptList = () => withTech(lists().dept || []);
-  // 核取方塊複選(以「、」串接,依清單順序;清單外的舊值也列出)
-  function fChecks(label, obj, key, options) {
-    const cur = splitNames(obj[key]);
-    const opts = [...options, ...cur.filter((v) => !options.includes(v))];
-    const sel = new Set(cur);
-    const box = h('div', { class: 'check-grid' });
-    for (const o of opts) {
-      const cb = h('input', { type: 'checkbox' });
-      cb.checked = sel.has(o);
-      cb.addEventListener('change', () => {
-        if (cb.checked) sel.add(o); else sel.delete(o);
-        obj[key] = opts.filter((v) => sel.has(v)).join('、');
-        markDirty();
-      });
-      box.append(h('label', { class: 'check-item' }, cb, h('span', {}, o)));
-    }
-    if (!opts.length) box.append(h('span', { class: 'hint' }, '(清單為空,請到設定頁新增)'));
-    return h('div', { class: 'field' }, h('span', { class: 'flabel' }, label), box);
+  // 下拉複選(清單內有核取方塊);以「／」串接,依清單順序,清單外的舊值放後面
+  const splitMulti = (s) => String(s || '').split(/[／/、,，;；\n]+/).map((x) => x.trim()).filter(Boolean);
+  function fMultiPick(label, obj, key, listKey) {
+    const inp = h('input', { type: 'text', readonly: true, placeholder: '請選擇(可複選)' });
+    inp.value = splitMulti(obj[key]).join('／');
+    const pick = async () => {
+      const cur = splitMulti(obj[key]);
+      const v = await openPicker({ title: label + '(可複選)', key: listKey, multi: true, selected: cur });
+      if (v == null) return;
+      const known = new Set(listValues(listKey).map((x) => x.value));
+      obj[key] = inp.value = [...v.filter((x) => known.has(x)), ...v.filter((x) => !known.has(x))].join('／');
+      markDirty();
+    };
+    inp.addEventListener('click', pick);
+    return field(label, h('div', { class: 'combo' }, inp, h('button', { type: 'button', class: 'combo-btn', 'aria-label': '選擇' + label, onclick: (e) => { e.preventDefault(); pick(); } }, '▾')));
   }
   // 下拉選單(固定選項)
   function fSelect(label, obj, key, options) {
@@ -1244,23 +1242,50 @@
       obj.done = used.map((r) => r.done).join('\n');
       markDirty();
     };
+    // 刪除:按「刪除」→ 每組出現核取方塊 → 勾選後按「刪除勾選」
+    let delMode = false;
+    const marked = new Set();
     const box = h('div', { class: 'line-rows' });
+    const tools = h('div', { class: 'line-tools' });
     const render = () => {
       box.innerHTML = '';
-      rows.forEach((r, i) => {
+      rows.forEach((r) => {
         const inp = h('input', { type: 'text', placeholder: '線別' });
         inp.value = r.line;
         inp.addEventListener('input', () => { r.line = inp.value.replace(/\n/g, ' '); sync(); });
         const fake = { v: r.done };
         const doneF = fSelect('完工', fake, 'v', CFG.DONE_OPTIONS);
         doneF.querySelector('select').addEventListener('change', () => { r.done = fake.v; sync(); });
-        const del = rows.length > 1 ? h('button', { type: 'button', class: 'line-del', 'aria-label': '刪除此線別', onclick: () => { rows.splice(i, 1); sync(); render(); } }, '✕') : null;
-        box.append(h('div', { class: 'pair-row line-row' + (del ? ' has-del' : '') }, field('線別', inp), doneF, del));
+        let cb = null;
+        if (delMode) {
+          cb = h('input', { type: 'checkbox', class: 'line-mark', 'aria-label': '勾選刪除' });
+          cb.checked = marked.has(r);
+          cb.addEventListener('change', () => { cb.checked ? marked.add(r) : marked.delete(r); cb.parentElement.classList.toggle('marked', cb.checked); renderTools(); });
+        }
+        box.append(h('div', { class: 'pair-row line-row' + (delMode ? ' del-mode' : '') + (marked.has(r) ? ' marked' : '') }, cb, field('線別', inp), doneF));
       });
+      renderTools();
+    };
+    const renderTools = () => {
+      tools.innerHTML = '';
+      if (!delMode) {
+        tools.append(
+          h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { rows.push({ line: '', done: '' }); render(); box.lastChild.querySelector('input[type=text]').focus(); } }, '＋ 線別'),
+          h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { delMode = true; marked.clear(); render(); } }, '刪除'));
+      } else {
+        tools.append(
+          h('button', {
+            type: 'button', class: 'btn btn-danger btn-sm', disabled: marked.size ? null : true, onclick: () => {
+              for (let i = rows.length - 1; i >= 0; i--) if (marked.has(rows[i])) rows.splice(i, 1);
+              if (!rows.length) rows.push({ line: '', done: '' });
+              delMode = false; marked.clear(); sync(); render();
+            },
+          }, `刪除勾選(${marked.size})`),
+          h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { delMode = false; marked.clear(); render(); } }, '取消'));
+      }
     };
     render();
-    const add = h('button', { type: 'button', class: 'btn btn-ghost btn-sm line-add', onclick: () => { rows.push({ line: '', done: '' }); render(); box.lastChild.querySelector('input').focus(); } }, '＋ 線別');
-    return h('div', { class: 'line-block' }, box, add);
+    return h('div', { class: 'line-block' }, box, tools);
   }
   function openRemain(id, p) {
     let obj, isNew = false;
@@ -1312,8 +1337,8 @@
       fText('暫定對策', obj, 'temp', { multi: true }),
       fText('永久對策', obj, 'perm', { multi: true }),
       fChips('ECN', obj, 'ecn', CFG.ECN_OPTIONS),
-      fChecks('權責區分', obj, 'dept', deptList()),
-      fChecks('負責人', obj, 'owner', lists().owner || []),
+      fMultiPick('權責區分', obj, 'dept', 'dept'),
+      fMultiPick('負責人', obj, 'owner', 'owner'),
       fDate('改善期限', obj, 'due'),
       h('div', { class: 'pair-row' }, fDate('物料交期', obj, 'matDate'), fSelect('物料狀態', obj, 'matStatus', CFG.MAT_STATUS_OPTIONS)),
       fLines(obj),
@@ -1330,6 +1355,7 @@
     const obj = editing.obj;
     if (!String(obj.code || '').trim()) { toast('請填寫專案代號'); return false; }
     if (!String(obj.problem || '').trim()) { toast('請填寫問題描述'); return false; }
+    for (const k of ['dept', 'owner']) obj[k] = splitMulti(obj[k]).join('／'); // 複選統一以「／」分隔
     const rec = clone(obj);
     try {
       await commit('儲存殘件項目…', (d) => {
