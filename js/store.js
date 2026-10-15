@@ -65,12 +65,15 @@
     return h.toString(36);
   }
 
-  // 專案代號排序:前 2 碼(EQ/MD/ST/AF…)相同的放一起,依 EQ→MD→ST→AF→其他(字母序);
-  // 同類型依後段數字(年份 2 碼 + 流水號,例 EQ-2260008)由舊到新
+  // 專案代號排序:依年度、流水號由舊到新(例 EQ-2260008 → 年度 26、流水號 0008),不分 EQ/MD/ST/AF;
+  // 無法解析年度流水號的排在後面;年度流水號相同時依 EQ→MD→ST→AF→其他(字母序)
   const CODE_ORDER = ['EQ', 'MD', 'ST', 'AF'];
+  const yearSerial = (c) => { const m = /^[A-Z]+-?\d(\d{2})(\d+)$/.exec(c); return m ? [Number(m[1]), Number(m[2])] : null; };
   function compareCode(a, b) {
     const pa = String(a || '').trim().toUpperCase(), pb = String(b || '').trim().toUpperCase();
     if (!pa || !pb) return pa ? -1 : pb ? 1 : 0; // 沒有代號的排最後
+    const ya = yearSerial(pa), yb = yearSerial(pb);
+    if (ya && yb) { const d = (ya[0] - yb[0]) || (ya[1] - yb[1]); if (d) return d; } else if (ya || yb) return ya ? -1 : 1;
     const ta = pa.slice(0, 2), tb = pb.slice(0, 2);
     if (ta !== tb) {
       const ia = CODE_ORDER.indexOf(ta), ib = CODE_ORDER.indexOf(tb);
