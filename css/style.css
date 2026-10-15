@@ -431,3 +431,15 @@ input[type="date"]::-webkit-date-and-time-value, input[type="datetime-local"]::-
 .need-date { margin-top: 4px; font-size: 13.5px; font-weight: 700; color: var(--primary, #1d4ed8); }
 .need-date.late { color: #dc2626; }
 .need-date.late::after { content: ' (已逾期)'; font-weight: 400; }
+
+/* 殘件:核取方塊複選、左右並排欄位、線別/完工 */
+.check-grid { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.check-item { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: 15px; cursor: pointer; user-select: none; }
+.check-item input { width: 18px; height: 18px; margin: 0; accent-color: var(--primary); }
+.check-item:has(input:checked) { background: var(--primary-soft); border-color: var(--primary); font-weight: 700; }
+.pair-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: end; }
+.pair-row.has-del { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+.pair-row .field select { width: 100%; min-height: 44px; padding: 9px 12px; font-size: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text); }
+.line-rows { display: grid; gap: 10px; }
+.line-del { border: 1px solid var(--border); background: var(--surface); color: var(--muted); border-radius: 10px; width: 40px; height: 44px; font-size: 16px; }
+.line-add { margin-top: 8px; }

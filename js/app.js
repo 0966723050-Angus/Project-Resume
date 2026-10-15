@@ -1198,12 +1198,76 @@
   };
 
   // ---------- 殘件編輯 ----------
+  // 權責區分清單:沒有「技術」時插在「電控」上面
+  const withTech = (L) => {
+    if (L.includes('技術')) return L;
+    const out = [...L], i = out.indexOf('電控');
+    out.splice(i >= 0 ? i : out.length, 0, '技術');
+    return out;
+  };
+  const lineSummary = (r) => { const D = String(r.done || '').split('\n'); return String(r.lines || '').split('\n').map((l, i) => (l || D[i]) ? `${l || '(未填)'}:${D[i] ? (D[i] === '是' ? '已完工' : '未完工') : '—'}` : '').filter(Boolean).join('\n'); };
+  const deptList = () => withTech(lists().dept || []);
+  // 核取方塊複選(以「、」串接,依清單順序;清單外的舊值也列出)
+  function fChecks(label, obj, key, options) {
+    const cur = splitNames(obj[key]);
+    const opts = [...options, ...cur.filter((v) => !options.includes(v))];
+    const sel = new Set(cur);
+    const box = h('div', { class: 'check-grid' });
+    for (const o of opts) {
+      const cb = h('input', { type: 'checkbox' });
+      cb.checked = sel.has(o);
+      cb.addEventListener('change', () => {
+        if (cb.checked) sel.add(o); else sel.delete(o);
+        obj[key] = opts.filter((v) => sel.has(v)).join('、');
+        markDirty();
+      });
+      box.append(h('label', { class: 'check-item' }, cb, h('span', {}, o)));
+    }
+    if (!opts.length) box.append(h('span', { class: 'hint' }, '(清單為空,請到設定頁新增)'));
+    return h('div', { class: 'field' }, h('span', { class: 'flabel' }, label), box);
+  }
+  // 下拉選單(固定選項)
+  function fSelect(label, obj, key, options) {
+    const sel = h('select', {}, h('option', { value: '' }, '請選擇'), ...options.map((o) => h('option', { value: o }, o)));
+    if (obj[key] && !options.includes(obj[key])) sel.append(h('option', { value: obj[key] }, obj[key]));
+    sel.value = obj[key] || '';
+    sel.addEventListener('change', () => { obj[key] = sel.value; markDirty(); });
+    return field(label, sel);
+  }
+  // 線別(手Key)+ 完工(是/否),可多組;存成換行分隔、逐行對應
+  function fLines(obj) {
+    const L = String(obj.lines || '').split('\n'), D = String(obj.done || '').split('\n');
+    const rows = Array.from({ length: Math.max(1, L.length, D.length) }, (_, i) => ({ line: (L[i] || '').trim(), done: (D[i] || '').trim() }));
+    const sync = () => {
+      const used = rows.filter((r) => r.line || r.done);
+      obj.lines = used.map((r) => r.line).join('\n');
+      obj.done = used.map((r) => r.done).join('\n');
+      markDirty();
+    };
+    const box = h('div', { class: 'line-rows' });
+    const render = () => {
+      box.innerHTML = '';
+      rows.forEach((r, i) => {
+        const inp = h('input', { type: 'text', placeholder: '線別' });
+        inp.value = r.line;
+        inp.addEventListener('input', () => { r.line = inp.value.replace(/\n/g, ' '); sync(); });
+        const fake = { v: r.done };
+        const doneF = fSelect('完工', fake, 'v', CFG.DONE_OPTIONS);
+        doneF.querySelector('select').addEventListener('change', () => { r.done = fake.v; sync(); });
+        const del = rows.length > 1 ? h('button', { type: 'button', class: 'line-del', 'aria-label': '刪除此線別', onclick: () => { rows.splice(i, 1); sync(); render(); } }, '✕') : null;
+        box.append(h('div', { class: 'pair-row line-row' + (del ? ' has-del' : '') }, field('線別', inp), doneF, del));
+      });
+    };
+    render();
+    const add = h('button', { type: 'button', class: 'btn btn-ghost btn-sm line-add', onclick: () => { rows.push({ line: '', done: '' }); render(); box.lastChild.querySelector('input').focus(); } }, '＋ 線別');
+    return h('div', { class: 'line-block' }, box, add);
+  }
   function openRemain(id, p) {
     let obj, isNew = false;
     if (id === 'new') {
       isNew = true;
       const proj = p ? lists().projects.find((x) => x.code === p) || S.data.remains.find((x) => x.code === p) : null;
-      obj = { id: Store.newId('RI'), saved: true, date: todayISO(), code: p || '', name: proj ? proj.name || '' : '', problem: '', cause: '', temp: '', perm: '', ecn: '', dept: '', owner: '', due: '', progress: '', status: 'Open', note: '', files: '', src: '', author: myName(), authorEmail: myEmail() };
+      obj = { id: Store.newId('RI'), saved: true, date: todayISO(), code: p || '', name: proj ? proj.name || '' : '', problem: '', cause: '', temp: '', perm: '', ecn: '', dept: '', owner: '', due: '', progress: '', status: 'Open', note: '', files: '', src: '', matDate: '', matStatus: '', lines: '', done: '', author: myName(), authorEmail: myEmail() };
     } else {
       const r = S.data.remains.find((x) => x.id === id);
       if (!r) { toast('找不到此殘件項目(可能已被刪除,或請重新載入)', 4000); replaceHash('#/remain'); showRemainList(); return; }
@@ -1228,7 +1292,8 @@
     body.append(h('div', { class: 'panel' },
       h('div', { class: 'ro-grid' },
         roField('日期', fmtDate(r.date)), roField('狀態', r.status || 'Open'), roField('專案代號', r.code), roField('專案名稱', r.name),
-        roField('ECN', r.ecn), roField('權責區分', r.dept), roField('負責人', r.owner), roField('改善期限', fmtDate(r.due)), roField('填表人', r.author)),
+        roField('ECN', r.ecn), roField('權責區分', r.dept), roField('負責人', r.owner), roField('改善期限', fmtDate(r.due)), roField('物料交期', fmtDate(r.matDate)), roField('物料狀態', r.matStatus), roField('填表人', r.author)),
+      roField('線別 / 完工', lineSummary(r)),
       roField('問題描述', r.problem), roField('發生原因', r.cause), roField('暫定對策', r.temp), roField('永久對策', r.perm),
       roField('改善進度及結果', r.progress), roFiles('附件', r.files, false), roField('備註', r.note),
       srcResume ? h('div', { class: 'ro-field' }, h('div', { class: 'flabel' }, '來源'), h('a', { href: '#/v/' + encodeURIComponent(srcResume.id), class: 'src-link' }, resumeTitle(srcResume))) : null));
@@ -1247,9 +1312,11 @@
       fText('暫定對策', obj, 'temp', { multi: true }),
       fText('永久對策', obj, 'perm', { multi: true }),
       fChips('ECN', obj, 'ecn', CFG.ECN_OPTIONS),
-      fCombo('權責區分', obj, 'dept', 'dept', { selectOnly: true }),
-      fCombo('負責人', obj, 'owner', 'owner', { selectOnly: true }),
+      fChecks('權責區分', obj, 'dept', deptList()),
+      fChecks('負責人', obj, 'owner', lists().owner || []),
       fDate('改善期限', obj, 'due'),
+      h('div', { class: 'pair-row' }, fDate('物料交期', obj, 'matDate'), fSelect('物料狀態', obj, 'matStatus', CFG.MAT_STATUS_OPTIONS)),
+      fLines(obj),
       fText('改善進度及結果', obj, 'progress', { multi: true }),
       fChips('狀態', obj, 'status', CFG.STATUS_OPTIONS),
       fFiles('附件', obj, 'files', { prefix: () => obj.code || obj.name }),
@@ -1267,6 +1334,8 @@
     try {
       await commit('儲存殘件項目…', (d) => {
         d.changed.add('remain');
+        const L = d.choice.lists;
+        if (!(L.dept || []).includes('技術')) { L.dept = withTech(L.dept || []); d.changed.add('choice'); } // 權責區分清單補「技術」
         const i = d.remains.findIndex((r) => r.id === rec.id);
         if (i >= 0 && !canEdit(d.remains[i])) throw new Error('只有填表人或管理者可以修改這筆殘件');
         if (i >= 0) d.remains[i] = rec;

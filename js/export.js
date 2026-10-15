@@ -10,7 +10,8 @@
   // 匯出的欄位(不含內部用的「來源履歷」「殘件編號」);附件只列檔名與連結
   const COLS = [
     ['seq', 7, 'c'], ['date', 12, 'd'], ['problem', 30, 'w'], ['cause', 24, 'w'], ['temp', 22, 'w'],
-    ['perm', 24, 'w'], ['ecn', 8, 'c'], ['dept', 11, 'c'], ['owner', 11, 'c'], ['due', 12, 'd'], ['progress', 26, 'w'],
+    ['perm', 24, 'w'], ['ecn', 8, 'c'], ['dept', 11, 'w'], ['owner', 11, 'w'], ['due', 12, 'd'],
+    ['matDate', 12, 'd'], ['matStatus', 9, 'c'], ['lines', 12, 'w'], ['done', 7, 'w'], ['progress', 26, 'w'],
     ['status', 9, 'c'], ['note', 20, 'w'], ['files', 34, 'w'],
   ];
   const EPOCH = Date.UTC(1899, 11, 30);
