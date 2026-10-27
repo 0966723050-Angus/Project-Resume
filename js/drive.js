@@ -30,7 +30,8 @@
   const LS_REDIRECT = 'pr_oauth_redirect';
   const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile|DingTalk/i.test(navigator.userAgent) ||
     (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-  const redirectUri = () => location.origin + location.pathname;
+  // 一律用資料夾網址(去掉 index.html;主畫面 App 的 start_url 是 ./index.html),須與 OAuth 用戶端登記的完全相同
+  const redirectUri = () => location.origin + location.pathname.replace(/[^/]*$/, '');
   let redirectError = '';
   (function handleRedirectReturn() {
     const hs = location.hash.replace(/^#/, '');
