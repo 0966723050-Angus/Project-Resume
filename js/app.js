@@ -2102,7 +2102,8 @@
     const busyMsg = !$('busy').hidden ? $('busyMsg').textContent : '';
     busy('');
     $('confirmTitle').textContent = '登入已逾時';
-    $('confirmMsg').textContent = `請按「繼續」以 ${Drive.savedAccount()} 繼續使用(不需重新選帳號)。`;
+    $('confirmMsg').textContent = `請按「繼續」以 ${Drive.savedAccount()} 繼續使用(不需重新選帳號)。` +
+      (Drive.IS_MOBILE ? '\n手機會先轉到 Google 頁面再自動回來;目前尚未儲存的修改會遺失,可先按「取消」把內容複製起來。' : '');
     const box = $('confirmBtns');
     box.innerHTML = '';
     const done = () => { $('confirmBox').hidden = true; reauthPending = null; };
@@ -2180,6 +2181,8 @@
     $('signInBtn').textContent = `繼續使用 ${acct}`;
     if (!$('welcomeMsg').textContent) $('welcomeMsg').textContent = '此裝置已登入過,按上方按鍵即可繼續(不需重新選帳號)。';
   }
+  const rErr = Drive.redirectError && Drive.redirectError();
+  if (rErr && !Drive.isSignedIn()) { $('welcomeMsg').textContent = rErr; toast(rErr, 5000); }
 
   window.__pr = { S, Store, commit, get editing() { return editing; } };
 })();

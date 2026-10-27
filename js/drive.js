@@ -25,7 +25,45 @@
     if (saved && saved.t && saved.exp > Date.now() + 60000) { accessToken = saved.t; tokenExpiry = saved.exp; }
   } catch {}
 
+  // 手機(含釘釘等 App 內建瀏覽器、加到主畫面的 App):Google 彈出視窗登入完常無法把結果傳回原頁面而卡住,
+  // 改用整頁導向登入 → 回到本頁網址並在 # 後面帶回權杖
+  const LS_REDIRECT = 'pr_oauth_redirect';
+  const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile|DingTalk/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+  const redirectUri = () => location.origin + location.pathname;
+  let redirectError = '';
+  (function handleRedirectReturn() {
+    const hs = location.hash.replace(/^#/, '');
+    if (!/(^|&)(access_token|error)=/.test(hs)) return;
+    const p = new URLSearchParams(hs);
+    let saved = null;
+    try { saved = JSON.parse(lsGet(LS_REDIRECT) || 'null'); } catch {}
+    lsSet(LS_REDIRECT, null);
+    if (!saved || p.get('state') !== saved.state) redirectError = '登入驗證失敗,請重新登入';
+    else if (p.get('error')) redirectError = p.get('error') === 'access_denied' ? '已取消登入' : '登入失敗:' + p.get('error');
+    else {
+      accessToken = p.get('access_token');
+      tokenExpiry = Date.now() + (Number(p.get('expires_in')) || 3600) * 1000 - 60000;
+      lsSet(LS_TOKEN, JSON.stringify({ t: accessToken, exp: tokenExpiry }));
+    }
+    history.replaceState(null, '', location.pathname + location.search + ((saved && saved.hash) || '#/'));
+  })();
+  function redirectLogin(prompt) {
+    const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    lsSet(LS_REDIRECT, JSON.stringify({ state, hash: location.hash }));
+    const u = new URLSearchParams({
+      client_id: CFG.GOOGLE_CLIENT_ID, redirect_uri: redirectUri(), response_type: 'token',
+      scope: CFG.DRIVE_SCOPE, include_granted_scopes: 'true', state,
+    });
+    const hint = lsGet(LS_HINT);
+    if (hint) u.set('login_hint', hint);
+    if (prompt === undefined && !hint) u.set('prompt', 'select_account');
+    location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + u;
+    return new Promise(() => {}); // 頁面即將離開
+  }
+
   function requestToken(prompt) {
+    if (IS_MOBILE) return redirectLogin(prompt);
     return new Promise((resolve, reject) => {
       if (!window.google || !google.accounts || !google.accounts.oauth2) {
         reject(new Error('Google 登入元件尚未載入,請確認網路後重試'));
@@ -62,6 +100,7 @@
 
   // 使用中若權杖快到期,趁使用者點擊時自動更新(Google 視窗會自動關閉),避免操作到一半要重新登入
   function refreshOnGesture() {
+    if (IS_MOBILE) return; // 手機是整頁導向,不能在操作中途自動更新
     if (refreshing || !accessToken || !lsGet(LS_HINT) || tokenExpiry - Date.now() > 10 * 60000) return;
     refreshing = requestToken('').catch(() => {}).finally(() => { refreshing = null; });
   }
@@ -181,5 +220,5 @@
 
   const viewLink = (id) => `https://drive.google.com/file/d/${id}/view`;
 
-  window.Drive = { requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, getMeta, download, upload, createFile, ensureFolder, media, trash, whoAmI, signOut, viewLink };
+  window.Drive = { IS_MOBILE, redirectError: () => redirectError, requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, getMeta, download, upload, createFile, ensureFolder, media, trash, whoAmI, signOut, viewLink };
 })();
