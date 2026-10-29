@@ -10,7 +10,7 @@ window.APP_CONFIG = {
   // 圖片/附件上傳到與 Excel 同一資料夾下的此子資料夾(不存在時自動建立)
   UPLOAD_FOLDER: 'Project Resume 附件',
   // 附件資料夾 ID(資料夾網址 folders/ 後面那串);有填就直接用,其他同仁不需看得到 Excel 的上層資料夾
-  UPLOAD_FOLDER_ID: '',
+  UPLOAD_FOLDER_ID: '1VuQluGYPwUC5-CFyyR_8m836kYktRaHi',
 
   // 「Project Resume」工作表:一列 = 一個問題;同一份履歷的多個問題共用「履歷編號」
   // kind:c 置中 / w 換行文字 / dt 日期時間 / d 日期 / n 數字;head = 只寫在履歷的第一列(避免加總重複)
