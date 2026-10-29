@@ -491,8 +491,20 @@
 
   async function uploadFolder() {
     if (S.folderId) return S.folderId;
+    // 1) 設定檔直接指定資料夾 ID(最可靠)
+    if (CFG.UPLOAD_FOLDER_ID) return (S.folderId = CFG.UPLOAD_FOLDER_ID);
+    // 2) 從已上傳過的檔案找出附件資料夾:其他同仁通常只被分享 Excel 與附件資料夾,
+    //    看不到 Excel 的上層資料夾,也搜尋不到「僅知道連結者」可存取的資料夾
+    const ids = new Set();
+    const scan = (s) => { for (const m of String(s || '').matchAll(/\/d\/([\w-]{20,})/g)) ids.add(m[1]); };
+    for (const r of S.data.resumes) { scan(r.images); scan(r.files); }
+    for (const r of S.data.remains) scan(r.files);
+    for (const id of [...ids].slice(-5).reverse()) {
+      try { const m = await Drive.getMeta(id); if (m.parents && m.parents[0]) return (S.folderId = m.parents[0]); } catch {}
+    }
+    // 3) 在 Excel 所在資料夾下找/建立附件資料夾
     const parent = S.meta && S.meta.parents && S.meta.parents[0];
-    if (!parent) throw new Error('無法取得 Excel 所在資料夾,請確認雲端硬碟權限');
+    if (!parent) throw new Error('找不到附件資料夾,請管理者確認「' + CFG.UPLOAD_FOLDER + '」已共用給你(編輯者)');
     S.folderId = await Drive.ensureFolder(CFG.UPLOAD_FOLDER, parent);
     return S.folderId;
   }
