@@ -152,6 +152,12 @@ function serialToDT(v) {
 }
 
 function parseSheet(wbXml, relsXml, sstXml, text, sheetName) {
+  var grid = parseGrid(wbXml, relsXml, sstXml, text, sheetName);
+  return grid;
+}
+
+// 工作表 → [{ r: 列號, cells: { 欄號: { val, num } } }]
+function parseGrid(wbXml, relsXml, sstXml, text, sheetName) {
   var rels = {}, m, re = /<Relationship\b[^>]*>/g;
   while ((m = re.exec(relsXml))) rels[attr(m[0], 'Id')] = attr(m[0], 'Target');
   var path = null;
@@ -181,23 +187,160 @@ function parseSheet(wbXml, relsXml, sstXml, text, sheetName) {
     }
     grid.push({ r: rnum, cells: cells });
   }
-  var header = grid.filter(function (g) { return g.r === 1; })[0];
-  if (!header) return [];
-  var idxOf = {};
-  Object.keys(header.cells).forEach(function (ci) { idxOf[String(header.cells[ci].val).trim()] = Number(ci); });
-  var out = [];
-  grid.forEach(function (g) {
-    if (g.r < 2) return;
-    var rec = {}, any = false;
-    Object.keys(COLS).forEach(function (k) {
-      var c = g.cells[idxOf[COLS[k]]];
-      if (!c || c.val === '') { rec[k] = ''; return; }
-      var v = c.val;
-      if ((k === 'start' || k === 'end') && c.num && v !== '' && !isNaN(Number(v))) v = serialToDT(v);
-      rec[k] = String(v);
-      any = true;
-    });
-    if (any) out.push(rec);
+  return grid;
+}
+
+// ---------- 每日逾期通知(08:30 寄信給管理者;手機 Gmail App 會跳出通知) ----------
+// 啟用:在編輯器選函式 installDailyNotify → 執行一次(第一次會要求授權寄信)。測試:執行 testNotify(不論有無逾期都寄一封)
+// 內容:追蹤/殘件事項 — 狀態不是 Close 且「改善期限」已過;專案管理 — 未結案專案中,狀態不是 Close 且「期限」已過的追蹤事項
+var NOTIFY_TO = '';  // 收件者;空白 = 執行者(管理者)本人
+var APP_URL = 'https://0966723050-angus.github.io/Project-Resume/';
+var PM_FILE_NAMES = ['Project Management.xlsx', 'Project Managment.xlsx'];
+var REMAIN_SHEET = 'Remain Item';
+var PM_SHEET = 'project list';
+var TZ = 'Asia/Taipei';
+
+function installDailyNotify() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (['dailyNotifyPlan', 'dailyOverdue'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
   });
+  // 每天 7 點多先排好當天 08:30 的單次排程(每日排程只能指定到「幾點」,單次排程才能準時到分鐘)
+  ScriptApp.newTrigger('dailyNotifyPlan').timeBased().everyDays(1).atHour(7).inTimezone(TZ).create();
+  dailyNotifyPlan();
+}
+function dailyNotifyPlan() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'dailyOverdue') ScriptApp.deleteTrigger(t); });
+  var at = new Date(Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'08:30:00") + '+08:00');
+  if (at.getTime() > Date.now()) ScriptApp.newTrigger('dailyOverdue').timeBased().at(at).create();
+}
+function dailyOverdue() { sendOverdue(false); }
+function testNotify() { sendOverdue(true); }
+
+function sendOverdue(always) {
+  var today = todaySerial();
+  var remainGrid = readGrid(getFile(), REMAIN_SHEET);
+  var pmFile = findByNames(PM_FILE_NAMES, 'PM_FILE_ID');
+  var pmGrid = pmFile ? readGrid(pmFile, PM_SHEET) : null;
+  var r = overdueFrom(remainGrid, pmGrid, today);
+  var n = r.remain.length + r.pm.length;
+  if (!n && !always) return;
+  var md = Utilities.formatDate(new Date(), TZ, 'M/d');
+  var subject = '【逾期提醒 ' + md + '】追蹤/殘件 ' + r.remain.length + ' 項、專案管理追蹤 ' + r.pm.length + ' 項';
+  MailApp.sendEmail({
+    to: NOTIFY_TO || Session.getEffectiveUser().getEmail(),
+    subject: subject,
+    body: overdueText(r) + (pmFile ? '' : '\n(找不到 Project Management.xlsx)') + '\n\n' + APP_URL,
+    htmlBody: overdueHtml(r) + (pmFile ? '' : '<p>(找不到 Project Management.xlsx)</p>'),
+    name: 'ATK專案履歷',
+  });
+}
+
+// 依檔名找檔案(記住 ID,下次免搜尋)
+function findByNames(names, propKey) {
+  var props = PropertiesService.getScriptProperties();
+  var saved = props.getProperty(propKey);
+  if (saved) { try { var f0 = DriveApp.getFileById(saved); if (!f0.isTrashed()) return f0; } catch (err) {} }
+  for (var i = 0; i < names.length; i++) {
+    var it = DriveApp.searchFiles('title = "' + names[i] + '" and trashed = false');
+    if (it.hasNext()) { var f = it.next(); props.setProperty(propKey, f.getId()); return f; }
+  }
+  return null;
+}
+function readGrid(file, sheetName) {
+  var parts = {};
+  Utilities.unzip(file.getBlob().setContentType('application/zip')).forEach(function (b) { parts[b.getName()] = b; });
+  var text = function (name) { return parts[name] ? parts[name].getDataAsString('UTF-8') : null; };
+  return parseGrid(text('xl/workbook.xml'), text('xl/_rels/workbook.xml.rels'), text('xl/sharedStrings.xml'), text, sheetName);
+}
+function todaySerial() {
+  var p = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd').split('-');
+  return Math.round((Date.UTC(+p[0], +p[1] - 1, +p[2]) - Date.UTC(1899, 11, 30)) / 86400000);
+}
+
+// ---- 以下為純資料處理(不呼叫 GAS API,可在瀏覽器測試) ----
+function tableOf(grid) {
+  var header = grid.filter(function (g) { return g.r === 1; })[0];
+  var col = {};
+  if (header) Object.keys(header.cells).forEach(function (ci) {
+    var t = String(header.cells[ci].val).trim();
+    if (t && !col[t]) col[t] = Number(ci); // 同名標題取第一個
+  });
+  return { col: col, rows: grid.filter(function (g) { return g.r >= 2; }) };
+}
+function cellText(row, ci) { var c = ci && row.cells[ci]; return c ? String(c.val).trim() : ''; }
+// 日期 → Excel 序號;接受數字序號或「2026/10/30」「2026-10-30」文字
+function cellSerial(row, ci) {
+  var c = ci && row.cells[ci];
+  if (!c || c.val === '') return null;
+  if (c.num && !isNaN(Number(c.val))) return Math.floor(Number(c.val));
+  var m = /^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/.exec(String(c.val).trim());
+  return m ? Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3]) - Date.UTC(1899, 11, 30)) / 86400000) : null;
+}
+function serialYMD(n) {
+  var d = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+  return d.getUTCFullYear() + '/' + pad2(d.getUTCMonth() + 1) + '/' + pad2(d.getUTCDate());
+}
+function isClosed(s) { return /^close$/i.test(String(s || '').trim()); }
+
+function overdueFrom(remainGrid, pmGrid, today) {
+  var out = { remain: [], pm: [] };
+  var rt = tableOf(remainGrid), rc = rt.col;
+  rt.rows.forEach(function (row) {
+    if (isClosed(cellText(row, rc['狀態']))) return;
+    var due = cellSerial(row, rc['改善期限']);
+    var problem = cellText(row, rc['問題描述']);
+    if (due == null || due >= today || !(problem || cellText(row, rc['專案代號']))) return;
+    out.remain.push({
+      code: cellText(row, rc['專案代號']), name: cellText(row, rc['專案名稱']), item: problem,
+      owner: cellText(row, rc['負責人']), due: serialYMD(due), days: today - due,
+    });
+  });
+  if (pmGrid) {
+    var pt = tableOf(pmGrid), pc = pt.col;
+    pt.rows.forEach(function (row) {
+      var code = cellText(row, pc['專案代號']), name = cellText(row, pc['專案名稱']);
+      if ((!code && !name) || cellText(row, pc['結案']) === '是') return;
+      for (var n = 1; ; n++) {
+        var sfx = n === 1 ? '' : String(n);
+        var ci = { item: pc['追蹤確認事項' + sfx], progress: pc['進度與結果' + sfx], due: pc['期限' + sfx], status: pc['狀態' + sfx] };
+        if (!ci.item && !ci.progress && !ci.due && !ci.status) break;
+        var item = cellText(row, ci.item), progress = cellText(row, ci.progress);
+        var due = cellSerial(row, ci.due);
+        if (isClosed(cellText(row, ci.status)) || due == null || due >= today) continue;
+        out.pm.push({ code: code, name: name, batch: cellText(row, pc['批次']), item: item || progress || '(未填事項)', due: serialYMD(due), days: today - due });
+      }
+    });
+  }
+  var byDays = function (a, b) { return b.days - a.days; };
+  out.remain.sort(byDays);
+  out.pm.sort(byDays);
   return out;
+}
+
+function overdueText(r) {
+  var line = function (x) {
+    return '・' + x.code + ' ' + x.name + (x.batch ? '(批次' + x.batch + ')' : '') + ':' + x.item.replace(/\s+/g, ' ').slice(0, 60) +
+      ' — 期限 ' + x.due + '(逾期 ' + x.days + ' 天)' + (x.owner ? ' / ' + x.owner : '');
+  };
+  return '【追蹤/殘件事項】' + r.remain.length + ' 項\n' + (r.remain.map(line).join('\n') || '(無)') + '\n\n' +
+    '【專案管理 追蹤事項】' + r.pm.length + ' 項\n' + (r.pm.map(line).join('\n') || '(無)');
+}
+function htmlEsc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function overdueHtml(r) {
+  var th = 'style="background:#1e40af;color:#fff;padding:6px 8px;text-align:left;font-size:13px;white-space:nowrap"';
+  var td = 'style="border-bottom:1px solid #e5e7eb;padding:6px 8px;font-size:13px;vertical-align:top"';
+  var table = function (title, rows, ownerCol) {
+    var h = '<h3 style="margin:18px 0 6px;font-size:16px">' + title + '(' + rows.length + ' 項)</h3>';
+    if (!rows.length) return h + '<p style="color:#6b7280;margin:0">(無)</p>';
+    h += '<table style="border-collapse:collapse;width:100%"><tr><th ' + th + '>專案</th><th ' + th + '>事項</th>' +
+      (ownerCol ? '<th ' + th + '>負責人</th>' : '') + '<th ' + th + '>期限</th><th ' + th + '>逾期</th></tr>';
+    rows.forEach(function (x) {
+      h += '<tr><td ' + td + '><b>' + htmlEsc(x.code) + '</b><br>' + htmlEsc(x.name) + (x.batch ? '(批次' + htmlEsc(x.batch) + ')' : '') + '</td>' +
+        '<td ' + td + '>' + htmlEsc(x.item).replace(/\n/g, '<br>') + '</td>' + (ownerCol ? '<td ' + td + '>' + htmlEsc(x.owner) + '</td>' : '') +
+        '<td ' + td + ' nowrap>' + x.due + '</td><td ' + td + ' nowrap><b style="color:#dc2626">' + x.days + ' 天</b></td></tr>';
+    });
+    return h + '</table>';
+  };
+  return '<div style="font-family:sans-serif;color:#111">' + table('追蹤/殘件事項', r.remain, true) + table('專案管理 追蹤事項', r.pm, false) +
+    '<p style="margin-top:18px"><a href="' + APP_URL + '">開啟 ATK專案履歷</a></p></div>';
 }
