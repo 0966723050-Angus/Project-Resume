@@ -220,7 +220,7 @@
 
   // ---------- 清單資料(Choice) ----------
   const lists = () => S.data.choice.lists;
-  // 專案代號/名稱清單:統一以專案管理檔(project list)為準,依年度、流水號由舊到新;
+  // 專案代號/名稱清單:統一以專案管理檔(project list)為準,依年度、流水號由舊到新(存檔順序;下拉選單顯示時改為由新到舊);
   // 尚未載入或沒有權限讀專案管理檔時,用 Choice 中的清單(管理者載入專案管理檔時會自動同步到 Choice)
   function pmProjects() {
     const m = new Map();
@@ -240,9 +240,11 @@
       await commit('同步專案清單…', (d) => { d.choice.lists.projects = want; d.changed.add('choice'); });
     } catch (err) { toast('專案清單同步失敗:' + errMsg(err), 5000); }
   }
+  const newestFirst = (a, b) => Store.compareCode(b, a); // 下拉選單:越新的專案排越上面
+  const projDesc = () => projList().slice().sort((a, b) => newestFirst(a.code, b.code));
   function listValues(key) {
-    if (key === 'code') return projList().filter((p) => p.code).map((p) => ({ value: p.code, label: p.code, sub: p.name }));
-    if (key === 'name') return projList().filter((p) => p.name).map((p) => ({ value: p.name, label: p.name, sub: p.code }));
+    if (key === 'code') return projDesc().filter((p) => p.code).map((p) => ({ value: p.code, label: p.code, sub: p.name }));
+    if (key === 'name') return projDesc().filter((p) => p.name).map((p) => ({ value: p.name, label: p.name, sub: p.code }));
     const L = key === 'dept' ? withTech(lists().dept || []) : lists()[key] || []; // 權責區分補「技術」
     return L.map((v) => ({ value: v, label: v }));
   }
@@ -632,7 +634,7 @@
     const sel = $('fCodeSel');
     sel.innerHTML = '';
     sel.append(h('option', { value: '' }, '選擇專案…'));
-    for (const [c, n] of [...map.entries()].sort((a, b) => Store.compareCode(a[0], b[0]))) sel.append(h('option', { value: `${c} ${n}`.trim() }, `${c} ${n}`.trim()));
+    for (const [c, n] of [...map.entries()].sort((a, b) => newestFirst(a[0], b[0]))) sel.append(h('option', { value: `${c} ${n}`.trim() }, `${c} ${n}`.trim()));
   }
   function renderList() {
     const code = $('fCode').value.trim().toLowerCase();
@@ -1137,7 +1139,7 @@
     const map = new Map();
     for (const r of S.data.remains) if (r.code && !map.has(r.code)) map.set(r.code, r.name || '');
     for (const p of projList()) if (p.code && map.has(p.code) && !map.get(p.code)) map.set(p.code, p.name);
-    return [...map.entries()].sort((a, b) => Store.compareCode(a[0], b[0]));
+    return [...map.entries()].sort((a, b) => newestFirst(a[0], b[0]));
   }
   function showRemainList(p) {
     const projects = remainProjects();
@@ -1472,12 +1474,12 @@
     fillPmPick();
     renderPmList();
   }
-  // 下拉選單:不重複的「代號 名稱」(依年度、流水號由舊到新);選取後以代號查詢
+  // 下拉選單:不重複的「代號 名稱」(依年度、流水號由新到舊);選取後以代號查詢
   function fillPmPick() {
     const sel = $('pmPick');
     const seen = new Map();
     for (const r of S.pm.data.records) if (r.code && !seen.has(r.code)) seen.set(r.code, r.name || '');
-    const codes = [...seen.keys()].sort(Store.compareCode);
+    const codes = [...seen.keys()].sort(newestFirst);
     sel.innerHTML = '';
     sel.append(h('option', { value: '' }, '📋 從清單選取專案…'), ...codes.map((c) => h('option', { value: c }, `${c} ${seen.get(c)}`)));
     sel.value = seen.has($('pmSearch').value.trim()) ? $('pmSearch').value.trim() : '';
@@ -2081,7 +2083,7 @@
     const box = $('listEditors');
     box.innerHTML = '';
     for (const L of CFG.LISTS) {
-      const items = L.key === 'project' ? projList() : (lists()[L.key] || []);
+      const items = L.key === 'project' ? projDesc() : (lists()[L.key] || []);
       if (L.key === 'project') { // 唯讀:取自專案管理檔,在「專案管理」新增/修改
         box.append(h('details', { class: 'panel list-panel' },
           h('summary', { class: 'panel-title' }, `${L.label}`, h('span', { class: 'count' }, String(items.length))),
