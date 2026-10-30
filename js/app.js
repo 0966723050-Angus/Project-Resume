@@ -78,6 +78,7 @@
       S.fileId = f.id;
       await reload();
       S.ready = true;
+      if (isAdmin()) pmLoad(false, true).then(() => { if (!$('listView').hidden) fillCodeFilter(); }).catch(() => {}); // 專案清單以專案管理檔為準
       route();
     } catch (err) {
       toast(errMsg(err), 5000);
@@ -219,9 +220,29 @@
 
   // ---------- 清單資料(Choice) ----------
   const lists = () => S.data.choice.lists;
+  // 專案代號/名稱清單:統一以專案管理檔(project list)為準,依年度、流水號由舊到新;
+  // 尚未載入或沒有權限讀專案管理檔時,用 Choice 中的清單(管理者載入專案管理檔時會自動同步到 Choice)
+  function pmProjects() {
+    const m = new Map();
+    for (const r of S.pm.data.records) {
+      const c = String(r.code || '').trim();
+      if (c && !m.get(c)) m.set(c, String(r.name || '').trim());
+    }
+    return [...m].sort((a, b) => Store.compareCode(a[0], b[0])).map(([code, name]) => ({ code, name }));
+  }
+  const projList = () => (S.pm && S.pm.data ? pmProjects() : lists().projects);
+  async function syncChoiceProjects() {
+    if (!isAdmin() || !S.pm || !S.pm.data) return;
+    const want = pmProjects();
+    const key = (L) => JSON.stringify(L.map((p) => [p.code, p.name]));
+    if (!want.length || key(want) === key(lists().projects)) return;
+    try {
+      await commit('同步專案清單…', (d) => { d.choice.lists.projects = want; d.changed.add('choice'); });
+    } catch (err) { toast('專案清單同步失敗:' + errMsg(err), 5000); }
+  }
   function listValues(key) {
-    if (key === 'code') return lists().projects.filter((p) => p.code).map((p) => ({ value: p.code, label: p.code, sub: p.name }));
-    if (key === 'name') return lists().projects.filter((p) => p.name).map((p) => ({ value: p.name, label: p.name, sub: p.code }));
+    if (key === 'code') return projList().filter((p) => p.code).map((p) => ({ value: p.code, label: p.code, sub: p.name }));
+    if (key === 'name') return projList().filter((p) => p.name).map((p) => ({ value: p.name, label: p.name, sub: p.code }));
     const L = key === 'dept' ? withTech(lists().dept || []) : lists()[key] || []; // 權責區分補「技術」
     return L.map((v) => ({ value: v, label: v }));
   }
@@ -258,6 +279,7 @@
       $('pickerSearch').value = '';
       $('pickerFoot').hidden = !opts.multi;
       $('pickerEdit').textContent = '編輯清單';
+      $('pickerEdit').hidden = listKeyOf(opts.key) === 'project'; // 專案清單在「專案管理」維護
       renderPicker();
       $('picker').hidden = false;
       document.body.classList.add('noscroll');
@@ -287,7 +309,7 @@
           type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: async (e) => {
             e.stopPropagation();
             const lk = listKeyOf(p.key);
-            const item = lk === 'project' ? lists().projects.find((x) => x[p.key] === it.value) : it.value;
+            const item = lk === 'project' ? projList().find((x) => x[p.key] === it.value) : it.value;
             const label = lk === 'project' ? `${item.code} ${item.name}` : item;
             if (!(await confirmYes('刪除選單項目', `確定從清單刪除「${label}」?\n(已填入資料的內容不受影響)`, '刪除', 'btn-danger'))) return;
             try { await choiceRemove(lk, item); p.sel.delete(it.value); } catch (err) { toast(errMsg(err), 5000); }
@@ -306,17 +328,7 @@
     add.innerHTML = '';
     const lk = listKeyOf(p.key);
     if (lk === 'project') {
-      const ci = h('input', { type: 'text', placeholder: '專案代號', 'aria-label': '新專案代號' });
-      const ni = h('input', { type: 'text', placeholder: '專案名稱', 'aria-label': '新專案名稱' });
-      if (kw) (p.key === 'code' ? ci : ni).value = $('pickerSearch').value.trim();
-      add.append(ci, ni, h('button', {
-        type: 'button', class: 'btn btn-primary btn-sm', onclick: async () => {
-          const item = { code: ci.value.trim(), name: ni.value.trim() };
-          if (!item.code || !item.name) return toast('請輸入專案代號與專案名稱');
-          try { await choiceAdd('project', item); } catch (err) { return toast(errMsg(err), 5000); }
-          if (p.multi) { p.sel.add(item[p.key]); renderPicker(); } else closePicker(item[p.key]);
-        },
-      }, '＋ 加入'));
+      add.append(h('div', { class: 'hint' }, '專案清單取自「專案管理」;新專案請在專案管理新增,或直接在欄位手動輸入'));
     } else {
       const inp = h('input', { type: 'text', placeholder: '新增項目', 'aria-label': '新增項目' });
       if (kw) inp.value = $('pickerSearch').value.trim();
@@ -435,7 +447,7 @@
 
   // 專案代號 ↔ 專案名稱 連動
   function projectPair(obj, after) {
-    const findBy = (k, v) => lists().projects.find((p) => p[k] && p[k].toLowerCase() === String(v || '').trim().toLowerCase());
+    const findBy = (k, v) => projList().find((p) => p[k] && p[k].toLowerCase() === String(v || '').trim().toLowerCase());
     let nameF;
     const codeF = fCombo('專案代號', obj, 'code', 'code', {
       onPick: (v) => { const p = findBy('code', v); if (p) { obj.name = p.name; nameF.combo.setValue(p.name); } after && after(); },
@@ -615,7 +627,7 @@
   function fillCodeFilter() {
     // 選項顯示「代號 名稱」(履歷中出現過的專案 + 清單中的專案)
     const map = new Map();
-    for (const p of lists().projects) if (p.code) map.set(p.code, p.name || '');
+    for (const p of projList()) if (p.code) map.set(p.code, p.name || '');
     for (const r of S.data.resumes) if (r.code && !map.get(r.code)) map.set(r.code, r.name || '');
     const sel = $('fCodeSel');
     sel.innerHTML = '';
@@ -1124,7 +1136,7 @@
   function remainProjects() {
     const map = new Map();
     for (const r of S.data.remains) if (r.code && !map.has(r.code)) map.set(r.code, r.name || '');
-    for (const p of lists().projects) if (p.code && map.has(p.code) && !map.get(p.code)) map.set(p.code, p.name);
+    for (const p of projList()) if (p.code && map.has(p.code) && !map.get(p.code)) map.set(p.code, p.name);
     return [...map.entries()].sort((a, b) => Store.compareCode(a[0], b[0]));
   }
   function showRemainList(p) {
@@ -1299,7 +1311,7 @@
     let obj, isNew = false;
     if (id === 'new') {
       isNew = true;
-      const proj = p ? lists().projects.find((x) => x.code === p) || S.data.remains.find((x) => x.code === p) : null;
+      const proj = p ? projList().find((x) => x.code === p) || S.data.remains.find((x) => x.code === p) : null;
       obj = { id: Store.newId('RI'), saved: true, date: todayISO(), code: p || '', name: proj ? proj.name || '' : '', problem: '', cause: '', temp: '', perm: '', ecn: '', dept: '', owner: '', due: '', progress: '', status: 'Open', note: '', files: '', src: '', matDate: '', matStatus: '', lines: '', done: '', author: myName(), authorEmail: myEmail() };
     } else {
       const r = S.data.remains.find((x) => x.id === id);
@@ -1410,10 +1422,13 @@
 
   // ---------- 專案管理(只有管理者) ----------
   // 資料:Project Management.xlsx(一列 = 一個專案批次);第一次進入時下載,之後每次存檔先下載最新檔再逐格修改
-  async function pmLoad(force) {
+  // quiet:背景載入(登入後先讀,讓各頁的專案下拉選單用專案管理檔的清單),不顯示讀取中畫面
+  let pmLoading = null;
+  async function pmLoad(force, quiet) {
     if (S.pm && S.pm.data && !force) return;
-    busy('讀取專案管理檔…');
-    try {
+    if (pmLoading) { if (!quiet) busy('讀取專案管理檔…'); try { return await pmLoading; } finally { if (!quiet) busy(''); } }
+    if (!quiet) busy('讀取專案管理檔…');
+    pmLoading = (async () => {
       if (!S.pm) {
         let f = null;
         for (const n of CFG.PM.FILE_NAMES) { f = await Drive.findByName(n); if (f) break; }
@@ -1423,7 +1438,9 @@
       const { meta, bytes } = await Drive.download(S.pm.fileId);
       S.pm.meta = meta;
       S.pm.data = PmStore.read(bytes);
-    } finally { busy(''); }
+    })();
+    try { await pmLoading; } finally { pmLoading = null; if (!quiet) busy(''); }
+    await syncChoiceProjects();
   }
   async function pmCommit(label, op) {
     busy(label);
@@ -1434,6 +1451,7 @@
       S.pm.meta = await Drive.upload(S.pm.fileId, out);
       S.pm.data = PmStore.read(out);
     } finally { busy(''); }
+    await syncChoiceProjects();
   }
   const pmFileLine = () => {
     const m = S.pm && S.pm.meta;
@@ -1592,7 +1610,7 @@
     const findName = (code) => {
       const c = String(code || '').trim().toLowerCase();
       if (!c) return '';
-      const hit = S.pm.data.records.find((r) => String(r.code).toLowerCase() === c) || lists().projects.find((p) => String(p.code).toLowerCase() === c);
+      const hit = S.pm.data.records.find((r) => String(r.code).toLowerCase() === c) || projList().find((p) => String(p.code).toLowerCase() === c);
       return hit ? hit.name : '';
     };
     let nameF, yearInp;
@@ -1607,7 +1625,7 @@
       onInput: onCode,
     });
     nameF = fCombo('專案名稱', obj, 'name', 'name', {
-      onPick: (v) => { const p = lists().projects.find((x) => x.name === v); if (p && !obj.code) { obj.code = p.code; codeF.combo.setValue(p.code); onCode(p.code); } upTitle(); },
+      onPick: (v) => { const p = projList().find((x) => x.name === v); if (p && !obj.code) { obj.code = p.code; codeF.combo.setValue(p.code); onCode(p.code); } upTitle(); },
       onInput: upTitle,
     });
     const yearF = fText('年度', obj, 'year', { inputmode: 'numeric' });
@@ -2063,7 +2081,14 @@
     const box = $('listEditors');
     box.innerHTML = '';
     for (const L of CFG.LISTS) {
-      const items = L.key === 'project' ? lists().projects : (lists()[L.key] || []);
+      const items = L.key === 'project' ? projList() : (lists()[L.key] || []);
+      if (L.key === 'project') { // 唯讀:取自專案管理檔,在「專案管理」新增/修改
+        box.append(h('details', { class: 'panel list-panel' },
+          h('summary', { class: 'panel-title' }, `${L.label}`, h('span', { class: 'count' }, String(items.length))),
+          h('div', { class: 'hint' }, '取自「專案管理」(Project Managment.xlsx),請在專案管理頁新增或修改'),
+          h('div', { class: 'list-items' }, ...items.map((it) => h('div', { class: 'list-item' }, h('span', {}, h('b', {}, it.code), ' ', it.name))))));
+        continue;
+      }
       const ul = h('div', { class: 'list-items' });
       for (const it of items) {
         const label = L.key === 'project' ? h('span', {}, h('b', {}, it.code || '(無代號)'), ' ', it.name) : h('span', {}, it);
