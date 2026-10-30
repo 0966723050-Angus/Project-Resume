@@ -891,8 +891,14 @@
     const title = resumeTitle(r);
     const text = `${title}\n${url}`;
     try {
-      // 只寫純文字(標題 + 網址):Android 有 HTML 格式時會優先貼上 HTML,網址只剩超連結文字而消失
-      await navigator.clipboard.writeText(text);
+      // iPhone/電腦:另附 HTML 超連結,貼到釘釘會變成「標題=連結」;
+      // Android 只寫純文字(標題 + 網址):有 HTML 格式時會優先貼上 HTML,網址只剩超連結文字而消失
+      if (!/Android/i.test(navigator.userAgent) && window.ClipboardItem && navigator.clipboard.write) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+          'text/html': new Blob([`<a href="${esc(url)}">${esc(title)}</a>`], { type: 'text/html' }),
+        })]);
+      } else await navigator.clipboard.writeText(text);
       toast('🔗 已複製:' + title, 3500);
     } catch {
       // 部分手機瀏覽器在非直接點擊時不允許寫入剪貼簿 → 顯示內容讓使用者再按一次
