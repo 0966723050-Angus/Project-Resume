@@ -119,7 +119,7 @@
     $('backBtn').dataset.to = back || '';
     $('saveBtn').hidden = !save;
     $('linkBtn').hidden = !link;
-    $('dingBtn').hidden = !link || !CFG.SHARE_URL;
+    $('dingBtn').hidden = !link || !CFG.SHARE_URL || !S.ready; // 發佈:只限登入的同仁(免登入檢視者不顯示)
     hideNav();
     for (const a of document.querySelectorAll('[data-nav]')) {
       a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm'));
@@ -942,13 +942,13 @@
     const r = await linkTarget('複製連結');
     if (r) copyLink(r);
   };
-  // 傳送到釘釘群組:由 Apps Script 呼叫群組機器人,訊息為「標題=連結」(不會出現網址與預覽卡片)
+  // 發佈到釘釘群組:由 Apps Script 呼叫群組機器人,訊息為「標題=連結」(不會出現網址與預覽卡片)
   $('dingBtn').onclick = async () => {
-    const r = await linkTarget('傳送連結');
+    const r = await linkTarget('發佈連結');
     if (!r) return;
     const title = resumeTitle(r);
-    if (!(await confirmYes('傳送到釘釘群組', `由群組機器人傳送:\n${title}`, '傳送'))) return;
-    busy('傳送到釘釘…');
+    if (!(await confirmYes('發佈到釘釘群組', `由群組機器人發佈:\n${title}`, '發佈'))) return;
+    busy('發佈到釘釘…');
     try {
       const q = { a: 'ding', id: r.id, k: r.shareKey };
       // 剛存檔時 Apps Script 可能還讀到舊檔 →「找不到」時等幾秒再試一次
@@ -958,9 +958,9 @@
         return gasGet(q, 1);
       });
       if (!j.title) throw new Error('Apps Script 尚未更新為新版本(部署 → 管理部署作業 → 新版本)');
-      toast('💬 已傳送到釘釘群組', 3000);
+      toast('✅ 已發佈到釘釘群組', 3000);
     }
-    catch (err) { toast('傳送失敗:' + errMsg(err), 6000); }
+    catch (err) { toast('發佈失敗:' + errMsg(err), 6000); }
     finally { busy(''); }
   };
 

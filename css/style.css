@@ -70,6 +70,8 @@ a { color: inherit; }
 .btn.wide { width: 100%; margin-top: 18px; }
 .btn-save { background: #fff; color: var(--primary-2); flex: none; position: relative; }
 .btn-save.dirty::after { content: ''; position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%; background: #f59e0b; border: 2px solid var(--header-bg); }
+.btn-publish { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,.85); flex: none; }
+.btn-publish:active { background: rgba(255,255,255,.15); }
 .link-btn { border: 0; background: transparent; color: var(--primary); cursor: pointer; font-size: 14px; padding: 6px 8px; }
 .link-btn.danger { color: var(--danger); }
 
