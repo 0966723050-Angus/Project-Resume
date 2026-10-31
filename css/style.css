@@ -502,11 +502,24 @@ body.wide-main main { max-width: none; }
 .wl-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .wl-dot { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
 .wl-dot.done { background: repeating-linear-gradient(45deg, #1b5e20 0 3px, #a5d6a7 3px 5px); border: 1px solid #1b5e20; }
-.wl-range { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px 10px; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
-.wl-range label { display: flex; flex-direction: column; gap: 3px; }
-.wl-range input[type="date"] { min-height: 40px; padding: 0 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 15px; }
-.wl-zoom { display: inline-flex; gap: 6px; }
-.wl-zoom .btn { padding: 0 14px; }
+/* 第一列:開始/結束日期各半;第二列:本週、雙月、更新資料、縮放 */
+.wl-range { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.wl-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.wl-dates label { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; font-size: 13px; color: var(--muted); text-align: center; }
+.wl-dates input[type="date"] {
+  -webkit-appearance: none; appearance: none; display: flex; align-items: center; justify-content: center;
+  width: 100%; min-width: 0; height: 44px; margin: 0; padding: 0 8px; line-height: 44px; text-align: center;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 16px;
+}
+.wl-dates input[type="date"]::-webkit-date-and-time-value { text-align: center; margin: 0; }
+.wl-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.wl-btns .btn { flex: 1 1 auto; padding: 0 12px; }
+#wlZoomOut, #wlZoomIn { flex: 0 0 48px; }
+@media (min-width: 700px) {
+  .wl-range { flex-direction: row; align-items: flex-end; }
+  .wl-dates { flex: 0 1 420px; }
+  .wl-btns .btn { flex: 0 0 auto; }
+}
 /* 凍結窗格:左上角、日期表頭(隨本體橫向捲動)、工作項目欄(隨本體縱向捲動),只有右下本體可上下左右捲動 */
 .wl-gantt {
   display: grid; grid-template-columns: 132px 1fr; grid-template-rows: 40px 1fr;

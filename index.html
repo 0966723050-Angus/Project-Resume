@@ -231,15 +231,17 @@
         <span><i class="wl-dot done"></i>已結案(資料庫)</span>
       </div>
       <div class="wl-range">
-        <label>開始日期<input type="date" id="wlStart"></label>
-        <label>結束日期<input type="date" id="wlEnd"></label>
-        <button id="wlWeek" class="btn btn-ghost btn-sm" type="button">本週</button>
-        <button id="wlTwoMonth" class="btn btn-ghost btn-sm" type="button">雙月</button>
-        <button id="wlGanttRefresh" class="btn btn-ghost btn-sm" type="button">🔄 更新資料</button>
-        <span class="wl-zoom">
+        <div class="wl-dates">
+          <label>開始日期<input type="date" id="wlStart"></label>
+          <label>結束日期<input type="date" id="wlEnd"></label>
+        </div>
+        <div class="wl-btns">
+          <button id="wlWeek" class="btn btn-ghost btn-sm" type="button">本週</button>
+          <button id="wlTwoMonth" class="btn btn-ghost btn-sm" type="button">雙月</button>
+          <button id="wlGanttRefresh" class="btn btn-ghost btn-sm" type="button">🔄 更新資料</button>
           <button id="wlZoomOut" class="btn btn-ghost btn-sm" type="button" aria-label="縮小">－</button>
           <button id="wlZoomIn" class="btn btn-ghost btn-sm" type="button" aria-label="放大">＋</button>
-        </span>
+        </div>
       </div>
       <div class="wl-gantt">
         <div class="wl-corner"></div>
