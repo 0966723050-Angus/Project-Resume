@@ -2,7 +2,7 @@
 const CACHE_NAME = 'atk-resume-dev';
 const APP_SHELL = [
   './', './index.html', './css/style.css', './js/config.js', './js/store.js', './js/export.js', './js/pm-store.js', './js/gantt.js',
-  './js/drive.js', './js/app.js', './manifest.webmanifest', './icons/icon.svg',
+  './js/drive.js', './js/worklist-io.js', './js/worklist-gantt.js', './js/worklist.js', './js/app.js', './manifest.webmanifest', './icons/icon.svg',
 ];
 
 self.addEventListener('install', (event) => {

@@ -4,9 +4,10 @@
   const SRC = {
     xlsx1: { name: 'Project Resume.xlsx', url: '_test/Project%20Resume.xlsx', ls: 'pr_mock_xlsx' },
     pm1: { name: 'Project Managment.xlsx', url: '_test/Project%20Managment.xlsx', ls: 'pr_mock_pm' },
+    wl1: { name: 'Work List.xlsm', url: '_test/Work%20List.xlsm', ls: 'pr_mock_wl' },
   };
   const files = {};
-  const version = { xlsx1: 1, pm1: 1 };
+  const version = { xlsx1: 1, pm1: 1, wl1: 1 };
   let seq = 1;
   const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s); };
   const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -20,7 +21,7 @@
     return (await fetch(SRC[id].url, { cache: 'no-store' })).arrayBuffer();
   }
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const idOf = (id) => (SRC[id] ? id : 'xlsx1');
+  const idOf = (id) => (SRC[id] ? id : id === (window.APP_CONFIG.WORK || {}).FILE_ID ? 'wl1' : 'xlsx1');
   // 程式建立的文字檔(例如 Project Schedule.json)存在 localStorage
   const LS_FILES = 'pr_mock_files';
   const created = () => { try { return JSON.parse(localStorage.getItem(LS_FILES) || '{}'); } catch { return {}; } };
@@ -64,6 +65,7 @@
     },
     async media(id) { if (!files[id]) throw new Error('找不到檔案'); return files[id]; },
     async trash(id) { delete files[id]; return true; },
+    async permissions() { return [{ emailAddress: '0966723050@atk.com.tw', role: 'owner' }, { emailAddress: 'a@atk.com.tw', role: 'writer' }, { emailAddress: 'b@atk.com.tw', role: 'reader' }]; },
     viewLink: (id) => `https://drive.google.com/file/d/${id}/view`,
     __reset() { for (const s of Object.values(SRC)) localStorage.removeItem(s.ls); localStorage.removeItem(LS_FILES); },
   };

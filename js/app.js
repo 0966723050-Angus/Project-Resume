@@ -3,7 +3,7 @@
   const CFG = window.APP_CONFIG;
   const $ = (id) => document.getElementById(id);
   const S = { user: null, fileId: null, meta: null, data: null, folderId: null, ready: false };
-  let editing = null; // { type:'resume'|'remain', obj, snapshot, isNew, uploads:[] }
+  let editing = null; // { type:'resume'|'remain'|'pm'|'sched'|'work', obj, snapshot, isNew, uploads:[] }
 
   // ---------- 共用小工具 ----------
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -78,6 +78,7 @@
       S.fileId = f.id;
       await reload();
       S.ready = true;
+      WorkList.available().then((ok) => { $('navWork').hidden = $('navGantt').hidden = !ok; });
       if (isAdmin()) pmLoad(false, true).then(() => { if (!$('listView').hidden) fillCodeFilter(); }).catch(() => {}); // 專案清單以專案管理檔為準
       route();
     } catch (err) {
@@ -110,7 +111,7 @@
   }
 
   // ---------- 頁首 / 版面 ----------
-  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmEditView', 'schedView', 'settingsView'];
+  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmEditView', 'schedView', 'workView', 'ganttView', 'settingsView'];
   function showView(id, { title = 'ATK專案履歷', sub = '', back = null, save = false, link = false } = {}) {
     for (const v of VIEWS) $(v).hidden = v !== id;
     setTitle(title, sub);
@@ -122,8 +123,9 @@
     $('dingBtn').hidden = !link || !CFG.SHARE_URL || !S.ready; // 發佈:只限登入的同仁(免登入檢視者不顯示)
     hideNav();
     for (const a of document.querySelectorAll('[data-nav]')) {
-      a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm'));
+      a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm') || (id === 'workView' && a.dataset.nav === 'work') || (id === 'ganttView' && a.dataset.nav === 'gantt'));
     }
+    document.body.classList.toggle('wide-main', id === 'ganttView'); // 甘特圖用滿整個寬度
     window.scrollTo(0, 0);
   }
   function setTitle(title, sub) {
@@ -172,6 +174,8 @@
     else if (parts[0] === 'settings' && isAdmin()) showSettings();
     else if (parts[0] === 'pm' && isAdmin()) (parts[1] ? openPm(parts[1]) : showPmList());
     else if (parts[0] === 'sched' && parts[1] && isAdmin()) openSched(parts[1]);
+    else if (parts[0] === 'work') WorkList.show('list');
+    else if (parts[0] === 'gantt') WorkList.show('gantt');
     else showList();
   }
   let lastHash = location.hash;
@@ -204,6 +208,7 @@
   // 放棄編輯:把這次上傳但沒存進履歷的檔案移到垃圾桶
   async function discardEditing() {
     const ups = editing ? editing.uploads : [];
+    if (editing && editing.type === 'work') WorkList.discard();
     editing = null;
     for (const id of ups) Drive.trash(id).catch(() => {});
   }
@@ -905,7 +910,7 @@
     markDirty();
   }
 
-  $('saveBtn').onclick = () => (editing && editing.type === 'remain' ? saveRemain() : editing && editing.type === 'pm' ? savePm() : editing && editing.type === 'sched' ? saveSched() : saveResume());
+  $('saveBtn').onclick = () => (editing && editing.type === 'work' ? WorkList.save() : editing && editing.type === 'remain' ? saveRemain() : editing && editing.type === 'pm' ? savePm() : editing && editing.type === 'sched' ? saveSched() : saveResume());
 
   // 複製連結(尚未儲存時先儲存):剪貼簿同時放「標題 + 連結」文字與超連結格式,
   // 貼到 LINE/Teams/Email 都會看到「日期 專案代號 專案名稱 專案履歷」;連結開啟為唯讀
@@ -2151,6 +2156,8 @@
       h('div', { class: 'hint' }, `檔案 ID(供分享連結 Apps Script 的 FILE_ID):${S.fileId || ''}`),
       h('div', { class: 'hint' }, CFG.SHARE_URL ? '分享連結:免登入檢視已啟用' : '分享連結:尚未設定 SHARE_URL,開啟連結需登入'));
     renderListEditors();
+    $('workSettings').innerHTML = '';
+    WorkList.renderSettings($('workSettings'));
   }
   function renderListEditors() {
     const box = $('listEditors');
@@ -2285,7 +2292,7 @@
     updatePending = true;
     while (isDirty()) {
       await dialog('程式已更新', '「ATK專案履歷」有新版本,必須更新後才能繼續使用。\n目前有尚未儲存的修改,將先儲存再更新。', [{ label: '儲存並更新', value: true, cls: 'btn-primary' }]);
-      const ok = editing.type === 'remain' ? await saveRemain() : editing.type === 'pm' ? await savePm() : editing.type === 'sched' ? await saveSched() : await saveResume();
+      const ok = editing.type === 'work' ? await WorkList.save() : editing.type === 'remain' ? await saveRemain() : editing.type === 'pm' ? await savePm() : editing.type === 'sched' ? await saveSched() : await saveResume();
       if (!ok) toast('儲存未完成,請處理後再按一次「儲存並更新」', 5000);
     }
     toast('程式已更新,正在重新載入…', 3000);
@@ -2304,6 +2311,18 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+
+  // ATK工作項目 / 甘特圖(js/worklist.js)
+  async function sha256(text) {
+    const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  WorkList.init({
+    h, toast, busy, dialog, confirmYes, errMsg, sha256, setTitle, isDirty, markDirty,
+    myEmail, showView: (id, o) => showView(id, o),
+    // obj:進入編輯時的資料(用來判斷是否有未儲存修改);null = 結束編輯
+    setEditing: (obj) => { editing = obj ? { type: 'work', obj, snapshot: JSON.stringify(obj), isNew: false, uploads: [] } : null; markDirty(); },
+  });
 
   route();
   // 此裝置登入過:權杖仍有效就直接進入;已過期則登入畫面顯示「繼續使用 xxx」(一鍵、免選帳號)

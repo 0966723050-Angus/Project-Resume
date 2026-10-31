@@ -203,6 +203,13 @@
     return resp.ok;
   }
 
+  // 檔案的共用人員(設定頁「編輯免密碼」名單)
+  async function permissions(fileId) {
+    const resp = await api(`${API}/${fileId}/permissions?supportsAllDrives=true&pageSize=100&fields=${encodeURIComponent('permissions(emailAddress,role,type)')}`);
+    if (!resp.ok) throw await apiError(resp, '讀取共用名單');
+    return (await resp.json()).permissions || [];
+  }
+
   async function whoAmI() {
     const resp = await api('https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress)');
     if (!resp.ok) return null;
@@ -221,5 +228,5 @@
 
   const viewLink = (id) => `https://drive.google.com/file/d/${id}/view`;
 
-  window.Drive = { IS_MOBILE, redirectError: () => redirectError, requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, getMeta, download, upload, createFile, ensureFolder, media, trash, whoAmI, signOut, viewLink };
+  window.Drive = { IS_MOBILE, redirectError: () => redirectError, requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, getMeta, download, upload, createFile, ensureFolder, media, trash, permissions, whoAmI, signOut, viewLink };
 })();

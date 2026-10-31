@@ -163,6 +163,17 @@ window.APP_CONFIG = {
     SCHED_FILE: 'Project Schedule.json',
   },
 
+  // 「ATK工作項目 / 甘特圖」(原 Work-List-Web):共用雲端硬碟上的 Work List.xlsm,工作表「List」A2:I17
+  // 誰能看/能存依該檔的雲端硬碟共用設定;編輯另需密碼(雜湊比對),設定頁可指定免密碼的人員
+  WORK: {
+    FILE_ID: '1bss9sYHoav894eaCxA9u68CcfHNuYUNZ',
+    FILE_NAME: 'Work List.xlsm',
+    SHEET: 'List',
+    MIN_ROW: 2,
+    MAX_ROW: 17,
+    EDIT_PASSWORD_HASH: '6f8c41020e56d0972ca7529a39855ea79ddc499a107381671b6d2f46741a7d00',
+  },
+
   // 分享連結免登入檢視:Google Apps Script 網頁應用程式網址(gas/Code.gs,以管理者身分讀取 Excel,
   // 只回傳連結指定、且分享碼相符的那份履歷)。留空時,開啟分享連結仍需登入。
   SHARE_URL: 'https://script.google.com/macros/s/AKfycbyPQkBbKbckdbW-BET5B_k0BhDBteMu_oT5VUBgVW0ExJ5_JRlEDD6f6AA8ZuNM3aDOvA/exec',

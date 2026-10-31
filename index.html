@@ -47,6 +47,8 @@
     <div class="drawer-brand">ATK專案履歷</div>
     <a class="drawer-item" href="#/" data-nav="list">📋 專案履歷</a>
     <a class="drawer-item" href="#/remain" data-nav="remain">🧩 追蹤/殘件事項</a>
+    <a class="drawer-item" href="#/work" data-nav="work" id="navWork" hidden>🗂️ ATK工作項目</a>
+    <a class="drawer-item" href="#/gantt" data-nav="gantt" id="navGantt" hidden>📊 ATK甘特圖</a>
     <a class="drawer-item" href="#/pm" data-nav="pm" id="navPm" hidden>📁 專案管理</a>
     <a class="drawer-item" href="#/settings" data-nav="settings" id="navSettings" hidden>⚙️ 設定</a>
     <div class="drawer-foot">
@@ -206,6 +208,47 @@
       </form>
     </section>
 
+    <!-- ATK工作項目(Work List.xlsm) -->
+    <section id="workView" class="view" hidden>
+      <div class="toolbar wl-toolbar">
+        <button id="wlEdit" class="btn btn-primary btn-sm" type="button">✎ 編輯</button>
+        <button id="wlSearchDone" class="btn btn-ghost btn-sm" type="button" hidden>🔍 查詢已結案</button>
+        <button id="wlCancel" class="btn btn-ghost btn-sm" type="button" hidden>取消編輯</button>
+        <button id="wlRefresh" class="btn btn-ghost btn-sm" type="button">🔄 更新資料</button>
+      </div>
+      <div id="wlStatus" class="count-line"></div>
+      <div id="wlList" class="card-list"></div>
+      <div id="wlEmpty" class="empty" hidden>目前沒有工作項目</div>
+      <button id="wlAdd" class="fab" type="button" hidden>＋ 新增項目</button>
+    </section>
+
+    <!-- ATK甘特圖 -->
+    <section id="ganttView" class="view" hidden>
+      <div class="wl-legend">
+        <span><i class="wl-dot" style="background:var(--wl-confirmed)"></i>已確定</span>
+        <span><i class="wl-dot" style="background:var(--wl-tentative)"></i>暫定</span>
+        <span><i class="wl-dot" style="background:var(--wl-pending)"></i>待安排/其他</span>
+        <span><i class="wl-dot done"></i>已結案(資料庫)</span>
+      </div>
+      <div class="wl-range">
+        <label>開始日期<input type="date" id="wlStart"></label>
+        <label>結束日期<input type="date" id="wlEnd"></label>
+        <button id="wlWeek" class="btn btn-ghost btn-sm" type="button">本週</button>
+        <button id="wlTwoMonth" class="btn btn-ghost btn-sm" type="button">雙月</button>
+        <button id="wlGanttRefresh" class="btn btn-ghost btn-sm" type="button">🔄 更新資料</button>
+        <span class="wl-zoom">
+          <button id="wlZoomOut" class="btn btn-ghost btn-sm" type="button" aria-label="縮小">－</button>
+          <button id="wlZoomIn" class="btn btn-ghost btn-sm" type="button" aria-label="放大">＋</button>
+        </span>
+      </div>
+      <div class="wl-gantt">
+        <div class="wl-corner"></div>
+        <div id="wlGanttHeaderScroll" class="wl-gantt-head"><svg id="wlGanttHeader" xmlns="http://www.w3.org/2000/svg"></svg></div>
+        <div id="wlGanttLabels" class="wl-gantt-labels"></div>
+        <div id="wlGanttScroll" class="wl-gantt-scroll"><svg id="wlGanttSvg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      </div>
+    </section>
+
     <!-- 設定 -->
     <section id="settingsView" class="view" hidden>
       <div class="panel">
@@ -219,6 +262,7 @@
       </div>
       <p class="hint pad">下拉選單的項目存在 Excel「Choice」工作表;在這裡或在各欄位的選單中新增/刪除都會直接存回雲端。</p>
       <div id="listEditors"></div>
+      <div id="workSettings"></div>
     </section>
   </main>
 
@@ -257,6 +301,7 @@
 
   <div id="busy" class="busy" hidden><div class="spinner"></div><div id="busyMsg">處理中…</div></div>
   <div id="toast" class="toast" role="status"></div>
+  <div id="wlTip" class="wl-tip"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -265,6 +310,9 @@
   <script src="js/pm-store.js?v=dev"></script>
   <script src="js/gantt.js?v=dev"></script>
   <script src="js/drive.js?v=dev"></script>
+  <script src="js/worklist-io.js?v=dev"></script>
+  <script src="js/worklist-gantt.js?v=dev"></script>
+  <script src="js/worklist.js?v=dev"></script>
   <script>
     // 本機測試:localhost 且網址帶 ?mock=1 時改用模擬雲端硬碟
     if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /[?&]mock=1/.test(location.search)) {

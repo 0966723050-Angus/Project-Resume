@@ -442,3 +442,87 @@ input[type="date"]::-webkit-date-and-time-value, input[type="datetime-local"]::-
 .pair-row .field select { width: 100%; min-height: 44px; padding: 9px 12px; font-size: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text); }
 .line-rows { display: grid; gap: 10px; }
 .line-tools { display: flex; gap: 8px; margin-top: 8px; }
+
+/* ---------- ATK工作項目 / 甘特圖 ---------- */
+:root { --wl-confirmed: #6fcf7d; --wl-confirmed-text: #14532d; --wl-tentative: #2f80ed; --wl-pending: #b0b6c0; --wl-pending-text: #2a2f3a; }
+body.wide-main main { max-width: none; }
+.wl-toolbar { flex-wrap: wrap; }
+.wl-toolbar .btn { flex: 1 1 auto; }
+.wl-card { cursor: default; }
+.wl-card:active { transform: none; }
+.wl-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.wl-name { flex: 1; min-width: 0; font-size: 15.5px; font-weight: 700; overflow-wrap: anywhere; }
+.wl-badge { flex: none; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.wl-badge.confirmed { background: var(--wl-confirmed); color: var(--wl-confirmed-text); }
+.wl-badge.tentative { background: var(--wl-tentative); color: #fff; }
+.wl-badge.pending { background: var(--wl-pending); color: var(--wl-pending-text); }
+.wl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; font-size: 13.5px; }
+.wl-f { display: flex; flex-direction: column; min-width: 0; }
+.wl-f.full { grid-column: 1 / -1; }
+.wl-fl { font-size: 11.5px; color: var(--muted); }
+.wl-fv { overflow-wrap: anywhere; }
+.wl-f.pre .wl-fv { white-space: pre-wrap; }
+.wl-edit { border-color: var(--primary); margin-bottom: 0; }
+.wl-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.wl-fields .span2 { grid-column: 1 / -1; }
+.wl-fields input[disabled] { opacity: .7; }
+.wl-select { width: 100%; min-height: 44px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 0 10px; font-size: 16px; }
+.wl-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+.wl-err { color: var(--danger); font-size: 13px; margin-top: 6px; }
+@media (max-width: 420px) { .wl-fields .wl-people { grid-column: 1 / -1; } }
+.wl-people { position: relative; }
+.wl-people-wrap { display: flex; gap: 6px; }
+.wl-people-wrap input { flex: 1; min-width: 0; }
+.wl-people-toggle { flex: none; width: 44px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); font-size: 15px; cursor: pointer; }
+.wl-people-panel {
+  position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px; z-index: 30; padding: 6px; min-width: min(280px, 86vw);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+.wl-people-list { max-height: 220px; overflow-y: auto; }
+.wl-people-opt { display: flex; align-items: center; gap: 4px; padding: 2px 4px; border-radius: 8px; }
+.wl-people-opt:hover { background: var(--surface-2); }
+.wl-people-opt label { flex: 1; display: flex; align-items: center; gap: 8px; padding: 7px 4px; cursor: pointer; font-size: 15px; }
+.wl-people-opt label input { width: 18px; height: 18px; }
+.wl-people-act { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; padding: 6px 8px; border-radius: 6px; }
+.wl-people-act:hover { background: var(--border); color: var(--text); }
+.wl-people-add { display: flex; gap: 6px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.wl-people-add input { flex: 1; min-width: 0; min-height: 40px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 0 10px; font-size: 16px; }
+.wl-people-empty { padding: 10px; font-size: 13px; color: var(--muted); }
+.wl-done-box { white-space: normal; }
+.wl-done { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.wl-done-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--text); }
+.wl-done-name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.wl-done-name small { display: block; font-weight: 400; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.wl-perm { cursor: pointer; }
+.wl-perm small { display: block; font-size: 12px; color: var(--muted); }
+.wl-perm-cb { width: 20px; height: 20px; flex: none; }
+.wl-perm-save { justify-content: flex-end; margin-top: 12px; }
+
+.wl-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 10px; font-size: 12.5px; color: var(--muted); }
+.wl-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.wl-dot { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+.wl-dot.done { background: repeating-linear-gradient(45deg, #1b5e20 0 3px, #a5d6a7 3px 5px); border: 1px solid #1b5e20; }
+.wl-range { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px 10px; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
+.wl-range label { display: flex; flex-direction: column; gap: 3px; }
+.wl-range input[type="date"] { min-height: 40px; padding: 0 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 15px; }
+.wl-zoom { display: inline-flex; gap: 6px; }
+.wl-zoom .btn { padding: 0 14px; }
+/* 凍結窗格:左上角、日期表頭(隨本體橫向捲動)、工作項目欄(隨本體縱向捲動),只有右下本體可上下左右捲動 */
+.wl-gantt {
+  display: grid; grid-template-columns: 132px 1fr; grid-template-rows: 40px 1fr;
+  max-height: calc(100dvh - var(--header-h) - 170px); min-height: 320px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.wl-corner { grid-column: 1; grid-row: 1; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.wl-gantt-head { grid-column: 2; grid-row: 1; overflow: hidden; border-bottom: 1px solid var(--border); }
+.wl-gantt-labels { grid-column: 1; grid-row: 2; overflow: hidden; border-right: 1px solid var(--border); }
+.wl-glabel {
+  height: 34px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere;
+  padding: 2px 8px; font-size: 10.5px; line-height: 1.1; border-bottom: 1px solid transparent;
+}
+.wl-gantt-scroll { grid-column: 2; grid-row: 2; overflow: auto; min-width: 0; }
+.wl-gantt svg { display: block; }
+.wl-tip {
+  position: fixed; pointer-events: none; background: var(--text); color: var(--bg); font-size: 12px; padding: 6px 10px;
+  border-radius: 8px; max-width: 240px; z-index: 55; opacity: 0; transition: opacity .12s ease;
+}
