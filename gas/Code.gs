@@ -399,6 +399,11 @@ function dingSend(res, key) {
   cache.put('ding_' + res.id, '1', 30);
   return { ok: true, title: title };
 }
+// 第一次使用前在編輯器執行一次:授權「連線到外部服務」(只連線測試,不會發訊息到群組)
+function authorizeDingtalk() {
+  var code = UrlFetchApp.fetch('https://oapi.dingtalk.com/', { muteHttpExceptions: true }).getResponseCode();
+  Logger.log('已授權外部連線(釘釘回應 ' + code + ');Webhook ' + (PropertiesService.getScriptProperties().getProperty('DINGTALK_WEBHOOK') ? '已設定' : '尚未設定'));
+}
 // 與 App 的複製連結標題相同:「2026/10/28 MD-2260002 INX_TFT6 FFU改造 專案履歷」
 function resumeTitleOf(r) {
   var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(r.start || ''));
