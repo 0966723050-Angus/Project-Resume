@@ -294,7 +294,7 @@
       $('pickerSearch').value = '';
       $('pickerFoot').hidden = !opts.multi;
       $('pickerEdit').textContent = '編輯清單';
-      $('pickerEdit').hidden = !!opts.items || (listKeyOf(opts.key) === 'project' && !isAdmin()); // 支援專案只有管理者可刪除
+      $('pickerEdit').hidden = !!opts.items || listKeyOf(opts.key) === 'project'; // 專案清單在專案管理/設定維護
       renderPicker();
       $('picker').hidden = false;
       document.body.classList.add('noscroll');
@@ -345,18 +345,7 @@
     if (p.items) return;
     const lk = listKeyOf(p.key);
     if (lk === 'project') {
-      const ci = h('input', { type: 'text', placeholder: '專案代號', 'aria-label': '支援專案代號' });
-      const ni = h('input', { type: 'text', placeholder: '專案名稱', 'aria-label': '支援專案名稱' });
-      if (kw) (p.key === 'code' ? ci : ni).value = $('pickerSearch').value.trim();
-      add.append(h('div', { class: 'hint' }, '需專案管理的專案請在「專案管理」新增;人力支援等專案可在此直接加入'), ci, ni, h('button', {
-        type: 'button', class: 'btn btn-primary btn-sm', onclick: async () => {
-          const item = { code: ci.value.trim(), name: ni.value.trim() };
-          if (!item.code || !item.name) return toast('請輸入專案代號與專案名稱');
-          if (projList().some((x) => x.code.toLowerCase() === item.code.toLowerCase())) return toast('清單中已有此專案代號');
-          try { await choiceAdd('support', item.code + SUP_SEP + item.name); } catch (err) { return toast(errMsg(err), 5000); }
-          if (p.multi) { p.sel.add(item[p.key]); renderPicker(); } else closePicker(item[p.key]);
-        },
-      }, '＋ 加入支援專案'));
+      // 專案清單:取自專案管理;人力支援專案只在「設定」新增
     } else {
       const inp = h('input', { type: 'text', placeholder: '新增項目', 'aria-label': '新增項目' });
       if (kw) inp.value = $('pickerSearch').value.trim();
