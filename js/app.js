@@ -508,7 +508,7 @@
     return [codeF, nameF];
   }
 
-  // 協同作業人員:清單複選 + 手Key(手Key 名單放後面)
+  // 作業人員(Excel 欄名仍為「協同作業人員」):清單複選 + 手Key(手Key 名單放後面)
   const splitNames = (s) => String(s || '').split(/[、,，;；\n]+/).map((x) => x.trim()).filter(Boolean);
   function fMembers(obj) {
     const all = splitNames(obj.members);
@@ -526,7 +526,7 @@
       chips.append(h('span', { class: 'caret' }, '▾'));
     };
     chips.onclick = async () => {
-      const v = await openPicker({ title: '協同作業人員', key: 'members', multi: true, selected: picked });
+      const v = await openPicker({ title: '作業人員', key: 'members', multi: true, selected: picked });
       if (v == null) return;
       picked = v;
       render();
@@ -534,7 +534,7 @@
     };
     manualInp.addEventListener('input', sync);
     render();
-    return h('div', { class: 'field' }, h('span', { class: 'flabel' }, '協同作業人員'), chips, manualInp);
+    return h('div', { class: 'field' }, h('span', { class: 'flabel' }, '作業人員'), chips, manualInp);
   }
 
   // ---------- 圖片 / 附件 ----------
@@ -1053,7 +1053,7 @@
         roField('專案代號', r.code), roField('專案名稱', r.name), roField('作業廠區', r.plant), roField('線別', r.line),
         roField('設備名稱', r.equip), roField('單元', r.unit), roField('專案階段', r.stage),
         roField('作業開始時間', fmtDT(r.start)), roField('作業結束時間', fmtDT(r.end)),
-        roField('報工時數', r.hours !== '' && r.hours != null ? r.hours + ' 小時' : ''), roField('協同作業人員', r.members),
+        roField('報工時數', r.hours !== '' && r.hours != null ? r.hours + ' 小時' : ''), roField('作業人員', r.members),
         roField('填表人', r.author)),
       roField('工作內容', r.work), roFiles('圖片', resumeFiles(r, 'images'), true), roFiles('附件', resumeFiles(r, 'files'), false)));
     r.problems.forEach((p, i) => {

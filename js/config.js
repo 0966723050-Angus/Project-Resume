@@ -26,7 +26,7 @@ window.APP_CONFIG = {
     { key: 'start', title: '作業開始時間', kind: 'dt' },
     { key: 'end', title: '作業結束時間', kind: 'dt' },
     { key: 'hours', title: '報工時數', kind: 'n', head: true },
-    { key: 'members', title: '協同作業人員', kind: 'c' },
+    { key: 'members', title: '協同作業人員', kind: 'c' }, // 畫面顯示「作業人員」;Excel 欄名不變
     { key: 'work', title: '工作內容', kind: 'w', head: true },
     { key: 'problem', title: '問題描述', kind: 'w', prob: true },
     { key: 'images', title: '圖片', kind: 'w', head: true },   // 整份履歷共用(放在工作內容下方),只寫第一列
@@ -92,7 +92,7 @@ window.APP_CONFIG = {
     { key: 'support', label: '人力支援專案(不需專案管理)' },
     { key: 'unit', label: '單元' },
     { key: 'stage', label: '專案階段' },
-    { key: 'members', label: '協同作業人員' },
+    { key: 'members', label: '作業人員' },
     { key: 'owner', label: '負責人' },
     { key: 'dept', label: '權責區分' },
     { key: 'pmStage', label: '專案管理階段' },
