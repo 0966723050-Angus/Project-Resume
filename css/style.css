@@ -237,7 +237,7 @@ span.combo-btn { display: flex; align-items: center; justify-content: center; po
 .pick-item .check { font-size: 20px; color: var(--primary); }
 .pick-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .pick-text b { font-weight: 600; overflow-wrap: anywhere; }
-.pick-text small { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.pick-text small { color: var(--muted); font-size: 14px; margin-top: 2px; overflow-wrap: anywhere; }
 .del-btn { border: 0; background: transparent; font-size: 17px; cursor: pointer; padding: 6px 8px; border-radius: 8px; flex: none; }
 .del-btn:hover { background: #fee2e2; }
 .picker-add { display: flex; gap: 6px; border-top: 1px solid var(--border); padding-top: 10px; }

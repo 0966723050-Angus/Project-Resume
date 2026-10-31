@@ -285,7 +285,7 @@
   }
 
   // ---------- 下拉選單(可新增/刪除項目) ----------
-  // opts: { title, key(code/name/unit/...), multi, selected:[], selectOnly }
+  // opts: { title, key(code/name/unit/...), multi, selected:[], selectOnly, items(固定清單:不可新增/編輯) }
   let picker = null;
   function openPicker(opts) {
     return new Promise((resolve) => {
@@ -294,7 +294,7 @@
       $('pickerSearch').value = '';
       $('pickerFoot').hidden = !opts.multi;
       $('pickerEdit').textContent = '編輯清單';
-      $('pickerEdit').hidden = listKeyOf(opts.key) === 'project' && !isAdmin(); // 支援專案只有管理者可刪除
+      $('pickerEdit').hidden = !!opts.items || (listKeyOf(opts.key) === 'project' && !isAdmin()); // 支援專案只有管理者可刪除
       renderPicker();
       $('picker').hidden = false;
       document.body.classList.add('noscroll');
@@ -311,7 +311,7 @@
   function renderPicker() {
     const p = picker;
     const kw = $('pickerSearch').value.trim().toLowerCase();
-    const items = listValues(p.key).filter((it) => !kw || (it.label + ' ' + (it.sub || '')).toLowerCase().includes(kw));
+    const items = (p.items || listValues(p.key)).filter((it) => !kw || (it.label + ' ' + (it.sub || '')).toLowerCase().includes(kw));
     const box = $('pickerList');
     box.innerHTML = '';
     if (!items.length) box.append(h('div', { class: 'empty small' }, kw ? '沒有符合的項目' : '清單是空的,請在下方新增'));
@@ -342,6 +342,7 @@
     // 新增項目
     const add = $('pickerAdd');
     add.innerHTML = '';
+    if (p.items) return;
     const lk = listKeyOf(p.key);
     if (lk === 'project') {
       const ci = h('input', { type: 'text', placeholder: '專案代號', 'aria-label': '支援專案代號' });
@@ -370,6 +371,32 @@
     }
   }
   $('pickerSearch').oninput = () => picker && renderPicker();
+  // 手機:專案選擇的原生下拉(寬度窄、名稱擠在一起)改開底部清單 — 一行代號、一行名稱,可搜尋
+  function sheetSelect(sel, title) {
+    if (!(Drive.IS_MOBILE || matchMedia('(pointer: coarse)').matches)) return;
+    const open = async (e) => {
+      e.preventDefault();
+      sel.blur();
+      if (picker) return;
+      const items = [...sel.options].filter((o) => o.value).map((o) => {
+        const t = o.textContent.trim(), i = t.indexOf(' ');
+        return { value: o.value, label: i > 0 ? t.slice(0, i) : t, sub: i > 0 ? t.slice(i + 1) : '' };
+      });
+      const v = await openPicker({ title, items, selected: [sel.value] });
+      if (v != null && v !== sel.value) { sel.value = v; sel.dispatchEvent(new Event('change')); }
+    };
+    let t0 = null; // 捲動畫面時手指劃過不算點擊
+    sel.addEventListener('touchstart', (e) => { const t = e.touches[0]; t0 = [t.clientX, t.clientY]; }, { passive: true });
+    sel.addEventListener('touchend', (e) => {
+      const t = e.changedTouches[0];
+      if (t0 && Math.hypot(t.clientX - t0[0], t.clientY - t0[1]) < 10) open(e); else e.preventDefault();
+    });
+    sel.addEventListener('mousedown', open);
+    sel.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') open(e); });
+  }
+  sheetSelect($('fCodeSel'), '選擇專案');
+  sheetSelect($('rProject'), '選擇專案');
+  sheetSelect($('pmPick'), '選取專案');
   $('pickerClose').onclick = () => closePicker(null);
   $('picker').onclick = (e) => { if (e.target === $('picker')) closePicker(null); };
   $('pickerOk').onclick = () => {
