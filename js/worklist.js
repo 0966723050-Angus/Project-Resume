@@ -1,4 +1,4 @@
-// worklist.js - ATK工作項目 / 甘特圖(資料:共用雲端硬碟上的 Work List.xlsm)
+// worklist.js - 近期工作項目 / 甘特圖(資料:共用雲端硬碟上的 Work List.xlsm)
 // 由 app.js 呼叫 WorkList.init(ctx) 注入共用的 UI 工具;編輯狀態透過 ctx.setEditing 交給 app.js 的「未儲存」保護
 (function () {
   const W = window.APP_CONFIG.WORK;
@@ -64,7 +64,7 @@
   }
   async function load(quiet) {
     if (loading) return loading;
-    if (!quiet) C.busy('讀取 ATK工作項目…');
+    if (!quiet) C.busy('讀取 近期工作項目…');
     loading = (async () => {
       try {
         const r = await Drive.download(W.FILE_ID);
@@ -93,11 +93,11 @@
   async function show(which) {
     tab = which;
     const isList = which === 'list';
-    C.showView(isList ? 'workView' : 'ganttView', { title: isList ? 'ATK工作項目' : 'ATK甘特圖', sub: statusText(), save: isList && editMode });
+    C.showView(isList ? 'workView' : 'ganttView', { title: isList ? '近期工作項目' : '工作項目甘特圖', sub: statusText(), save: isList && editMode });
     if (!loaded) {
       try { await load(); } catch (err) { C.toast(C.errMsg(err), 6000); $('wlStatus').textContent = '載入失敗:' + C.errMsg(err); return; }
       if (tab !== which) return;
-      C.setTitle(isList ? 'ATK工作項目' : 'ATK甘特圖', statusText());
+      C.setTitle(isList ? '近期工作項目' : '工作項目甘特圖', statusText());
     }
     if (isList) renderList(); else renderGantt();
   }
@@ -358,17 +358,17 @@
     const clean = D.rows.filter((r) => r.status !== '完工' && ((r.item && r.item.trim()) || r.status || r.start || r.end)).map((r) => ({ ...r }));
     sortByStart(clean);
     clean.forEach((r, i) => { r.row = W.MIN_ROW + i; }); // 依排序後順序重新指定 Excel 列號
-    C.busy('儲存 ATK工作項目…');
+    C.busy('儲存 近期工作項目…');
     try {
       const latest = await Drive.download(W.FILE_ID); // 以雲端最新版為底(保留其他工作表的變更)
       const out = WorkIO.buildPatched(latest.bytes, clean, archiveOut, D.roster);
-      C.busy('儲存 ATK工作項目(上傳中)…');
+      C.busy('儲存 近期工作項目(上傳中)…');
       meta = await Drive.upload(W.FILE_ID, out, WorkIO.MIME);
       editMode = false;
       apply(out);
       C.setEditing(null);
       $('saveBtn').hidden = true;
-      C.setTitle('ATK工作項目', statusText());
+      C.setTitle('近期工作項目', statusText());
       renderList();
       C.toast('✅ 已儲存至雲端硬碟');
       return true;
@@ -426,7 +426,7 @@
     const body = h('div', {}, h('div', { class: 'empty small' }, '展開後載入共用人員名單…'));
     let draft = null;
     const panel = h('details', { class: 'panel list-panel' },
-      h('summary', { class: 'panel-title' }, 'ATK工作項目:編輯免密碼'),
+      h('summary', { class: 'panel-title' }, '近期工作項目:編輯免密碼'),
       h('div', { class: 'hint' }, `勾選的人員進入工作項目編輯時不需輸入密碼。名單為「${W.FILE_NAME}」目前的雲端硬碟共用人員,設定存在該檔的「權限」工作表。`),
       body);
     const renderRows = () => {

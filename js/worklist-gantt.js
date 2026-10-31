@@ -1,4 +1,4 @@
-// worklist-gantt.js - ATK工作項目甘特圖(SVG,RWD)
+// worklist-gantt.js - 近期工作項目甘特圖(SVG,RWD)
 // 版面採「凍結窗格」:左上角固定、日期表頭隨內容橫向捲動但縱向固定、
 // 工作項目欄隨內容縱向捲動但橫向固定,只有右下角圖表本體會上下左右捲動。
 (function () {

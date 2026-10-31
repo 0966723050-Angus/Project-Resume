@@ -163,7 +163,7 @@ window.APP_CONFIG = {
     SCHED_FILE: 'Project Schedule.json',
   },
 
-  // 「ATK工作項目 / 甘特圖」(原 Work-List-Web):共用雲端硬碟上的 Work List.xlsm,工作表「List」A2:I17
+  // 「近期工作項目 / 甘特圖」(原 Work-List-Web):共用雲端硬碟上的 Work List.xlsm,工作表「List」A2:I17
   // 誰能看/能存依該檔的雲端硬碟共用設定;編輯另需密碼(雜湊比對),設定頁可指定免密碼的人員
   WORK: {
     FILE_ID: '1bss9sYHoav894eaCxA9u68CcfHNuYUNZ',

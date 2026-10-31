@@ -2312,7 +2312,7 @@
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
-  // ATK工作項目 / 甘特圖(js/worklist.js)
+  // 近期工作項目 / 甘特圖(js/worklist.js)
   async function sha256(text) {
     const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
     return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, '0')).join('');
