@@ -950,7 +950,13 @@
     if (!(await confirmYes('傳送到釘釘群組', `由群組機器人傳送:\n${title}`, '傳送'))) return;
     busy('傳送到釘釘…');
     try {
-      const j = await gasGet({ a: 'ding', id: r.id, k: r.shareKey }, 1);
+      const q = { a: 'ding', id: r.id, k: r.shareKey };
+      // 剛存檔時 Apps Script 可能還讀到舊檔 →「找不到」時等幾秒再試一次
+      const j = await gasGet(q, 1).catch(async (err) => {
+        if (!/找不到此專案履歷/.test(errMsg(err))) throw err;
+        await new Promise((ok) => setTimeout(ok, 4000));
+        return gasGet(q, 1);
+      });
       if (!j.title) throw new Error('Apps Script 尚未更新為新版本(部署 → 管理部署作業 → 新版本)');
       toast('💬 已傳送到釘釘群組', 3000);
     }

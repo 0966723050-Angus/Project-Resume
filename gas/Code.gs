@@ -62,7 +62,12 @@ function loadRowsById(id) {
   var cache = CacheService.getScriptCache();
   var hit = cache.get('r_' + ver + '_' + id);
   if (hit) return JSON.parse(hit);
-  if (cache.get('v_' + ver)) return []; // 這個版本已解析過且沒有此編號
+  // 這個版本已解析過且沒有此編號:可能是剛存檔、雲端硬碟的「更新時間」還沒跟上(仍是舊版本號)
+  // → 重新解析一次最新內容(15 秒內最多一次,避免被亂打的編號拖慢)
+  if (cache.get('v_' + ver)) {
+    if (cache.get('reparse')) return [];
+    cache.put('reparse', '1', 15);
+  }
   var byId = buildCache(f, ver);
   return byId[id] || [];
 }
@@ -155,7 +160,25 @@ function serialToDT(v) {
 
 function parseSheet(wbXml, relsXml, sstXml, text, sheetName) {
   var grid = parseGrid(wbXml, relsXml, sstXml, text, sheetName);
-  return grid;
+  var header = grid.filter(function (g) { return g.r === 1; })[0];
+  if (!header) return [];
+  var idxOf = {};
+  Object.keys(header.cells).forEach(function (ci) { idxOf[String(header.cells[ci].val).trim()] = Number(ci); });
+  var out = [];
+  grid.forEach(function (g) {
+    if (g.r < 2) return;
+    var rec = {}, any = false;
+    Object.keys(COLS).forEach(function (k) {
+      var c = g.cells[idxOf[COLS[k]]];
+      if (!c || c.val === '') { rec[k] = ''; return; }
+      var v = c.val;
+      if ((k === 'start' || k === 'end') && c.num && v !== '' && !isNaN(Number(v))) v = serialToDT(v);
+      rec[k] = String(v);
+      any = true;
+    });
+    if (any) out.push(rec);
+  });
+  return out;
 }
 
 // 工作表 → [{ r: 列號, cells: { 欄號: { val, num } } }]
