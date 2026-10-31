@@ -9,6 +9,7 @@
  *
  *   ?id=<履歷編號>&k=<分享碼>                → { ok, resume }
  *   ?a=file&id=<履歷編號>&k=<分享碼>&f=<檔案ID> → { ok, name, mime, data(base64) }
+ *   ?a=ding&id=<履歷編號>&k=<分享碼>          → 由釘釘群組機器人發送「標題=連結」訊息 → { ok }
  */
 var FILE_ID = '';                       // 可填 Project Resume.xlsx 的檔案 ID(App 設定頁可複製);空白則依檔名搜尋
 var FILE_NAME = 'Project Resume.xlsx';
@@ -28,6 +29,7 @@ function doGet(e) {
   try {
     var r = findResume(String(p.id || ''), String(p.k || ''));
     if (p.a === 'file') return json(fileOut(r, String(p.f || '')));
+    if (p.a === 'ding') return json(dingSend(r, String(p.k || '')));
     return json({ ok: true, resume: r });
   } catch (err) {
     return json({ ok: false, error: String((err && err.message) || err) });
@@ -343,4 +345,40 @@ function overdueHtml(r) {
   };
   return '<div style="font-family:sans-serif;color:#111">' + table('追蹤/殘件事項', r.remain, true) + table('專案管理 追蹤事項', r.pm, false) +
     '<p style="margin-top:18px"><a href="' + APP_URL + '">開啟 ATK專案履歷</a></p></div>';
+}
+
+// ---------- 傳送到釘釘群組(自訂機器人) ----------
+// 設定:專案設定(齒輪)→ 指令碼屬性 → 新增
+//   DINGTALK_WEBHOOK = 機器人 Webhook 網址(https://oapi.dingtalk.com/robot/send?access_token=…)
+//   DINGTALK_SECRET  = 機器人安全設定選「加簽」時的 SEC… 密鑰(選「自訂關鍵詞」則不用填,關鍵詞請用「專案履歷」)
+// Webhook 不寫在程式裡(本檔放在公開的 GitHub)。訊息內容由伺服器依履歷產生,同一份履歷 30 秒內只送一次
+function dingSend(res, key) {
+  var props = PropertiesService.getScriptProperties();
+  var hook = props.getProperty('DINGTALK_WEBHOOK');
+  if (!hook) throw new Error('尚未設定釘釘機器人(DINGTALK_WEBHOOK)');
+  var cache = CacheService.getScriptCache();
+  if (cache.get('ding_' + res.id)) throw new Error('剛剛已傳送過,請稍後再試');
+  var secret = props.getProperty('DINGTALK_SECRET');
+  if (secret) {
+    var ts = String(Date.now());
+    var sign = Utilities.base64Encode(Utilities.computeHmacSha256Signature(ts + '\n' + secret, secret));
+    hook += '&timestamp=' + ts + '&sign=' + encodeURIComponent(sign);
+  }
+  var title = resumeTitleOf(res);
+  var url = APP_URL + '#/v/' + encodeURIComponent(res.id) + '?k=' + encodeURIComponent(key);
+  var resp = UrlFetchApp.fetch(hook, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    payload: JSON.stringify({ msgtype: 'markdown', markdown: { title: title, text: '[' + title.replace(/[\[\]]/g, '') + '](' + url + ')' } }),
+  });
+  var j = {};
+  try { j = JSON.parse(resp.getContentText()); } catch (err) {}
+  if (j.errcode !== 0) throw new Error('釘釘拒絕:' + (j.errmsg || resp.getResponseCode()));
+  cache.put('ding_' + res.id, '1', 30);
+  return { ok: true, title: title };
+}
+// 與 App 的複製連結標題相同:「2026/10/28 MD-2260002 INX_TFT6 FFU改造 專案履歷」
+function resumeTitleOf(r) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(r.start || ''));
+  var t = [m ? m[1] + '/' + m[2] + '/' + m[3] : '', r.code, r.name].filter(Boolean).join(' ');
+  return (t ? t + ' ' : '') + '專案履歷';
 }

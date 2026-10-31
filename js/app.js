@@ -119,6 +119,7 @@
     $('backBtn').dataset.to = back || '';
     $('saveBtn').hidden = !save;
     $('linkBtn').hidden = !link;
+    $('dingBtn').hidden = !link || !CFG.SHARE_URL;
     hideNav();
     for (const a of document.querySelectorAll('[data-nav]')) {
       a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm'));
@@ -917,24 +918,44 @@
       }
     }
   }
-  $('linkBtn').onclick = async () => {
+  // 目前這份履歷(需要時先存檔、補分享碼);取消或失敗回傳 null
+  async function linkTarget(verb) {
     if (editing && editing.type === 'resume') {
       if (editing.isNew || isDirty()) {
-        if (!(await confirmYes('複製連結', '需要先儲存這份專案履歷,才能產生連結。', '儲存並複製'))) return;
-        if (!(await saveResume())) return;
+        if (!(await confirmYes(verb, '需要先儲存這份專案履歷,才能產生連結。', '儲存並' + verb.replace(/連結$/, '')))) return null;
+        if (!(await saveResume())) return null;
       }
       if (!editing.obj.shareKey) {
-        try { const r = await ensureShareKey(editing.obj); afterResumeSaved(r); } catch (err) { return toast(errMsg(err), 5000); }
+        try { const r = await ensureShareKey(editing.obj); afterResumeSaved(r); } catch (err) { toast(errMsg(err), 5000); return null; }
       }
-      return copyLink(editing.obj);
+      return editing.obj;
     }
     const { parts } = parseHash();
-    if (S.public) return copyLink(S.public.resume);
+    if (S.public) return S.public.resume;
     let r = parts[0] === 'v' && S.data.resumes.find((x) => x.id === parts[1]);
-    if (!r) return;
-    try { r = await ensureShareKey(r); } catch (err) { return toast(errMsg(err), 5000); }
+    if (!r) return null;
+    try { r = await ensureShareKey(r); } catch (err) { toast(errMsg(err), 5000); return null; }
     replaceHash('#/v/' + encodeURIComponent(r.id) + '?k=' + r.shareKey);
-    copyLink(r);
+    return r;
+  }
+  $('linkBtn').onclick = async () => {
+    const r = await linkTarget('複製連結');
+    if (r) copyLink(r);
+  };
+  // 傳送到釘釘群組:由 Apps Script 呼叫群組機器人,訊息為「標題=連結」(不會出現網址與預覽卡片)
+  $('dingBtn').onclick = async () => {
+    const r = await linkTarget('傳送連結');
+    if (!r) return;
+    const title = resumeTitle(r);
+    if (!(await confirmYes('傳送到釘釘群組', `由群組機器人傳送:\n${title}`, '傳送'))) return;
+    busy('傳送到釘釘…');
+    try {
+      const j = await gasGet({ a: 'ding', id: r.id, k: r.shareKey }, 1);
+      if (!j.title) throw new Error('Apps Script 尚未更新為新版本(部署 → 管理部署作業 → 新版本)');
+      toast('💬 已傳送到釘釘群組', 3000);
+    }
+    catch (err) { toast('傳送失敗:' + errMsg(err), 6000); }
+    finally { busy(''); }
   };
 
   // ---------- 唯讀檢視(分享連結 / 沒有修改權限) ----------
