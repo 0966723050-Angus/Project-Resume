@@ -231,7 +231,19 @@
     }
     return [...m].sort((a, b) => Store.compareCode(a[0], b[0])).map(([code, name]) => ({ code, name }));
   }
-  const projList = () => (S.pm && S.pm.data ? pmProjects() : lists().projects);
+  // 人力支援等不需專案管理的專案:另存 Choice「支援專案」欄,一格一個「代號｜名稱」
+  const SUP_SEP = '｜';
+  function supportList() {
+    return (lists().support || []).map((raw) => {
+      const [code, ...rest] = String(raw).split(SUP_SEP);
+      return { code: code.trim(), name: rest.join(SUP_SEP).trim(), support: true, raw };
+    }).filter((p) => p.code || p.name);
+  }
+  function projList() {
+    const base = S.pm && S.pm.data ? pmProjects() : lists().projects;
+    const have = new Set(base.map((p) => p.code));
+    return [...base, ...supportList().filter((p) => !have.has(p.code))];
+  }
   async function syncChoiceProjects() {
     if (!isAdmin() || !S.pm || !S.pm.data) return;
     const want = pmProjects();
@@ -244,8 +256,9 @@
   const newestFirst = (a, b) => Store.compareCode(b, a); // 下拉選單:越新的專案排越上面
   const projDesc = () => projList().slice().sort((a, b) => newestFirst(a.code, b.code));
   function listValues(key) {
-    if (key === 'code') return projDesc().filter((p) => p.code).map((p) => ({ value: p.code, label: p.code, sub: p.name }));
-    if (key === 'name') return projDesc().filter((p) => p.name).map((p) => ({ value: p.name, label: p.name, sub: p.code }));
+    const tag = (p) => (p.support ? '(支援)' : '');
+    if (key === 'code') return projDesc().filter((p) => p.code).map((p) => ({ value: p.code, label: p.code, sub: p.name + tag(p) }));
+    if (key === 'name') return projDesc().filter((p) => p.name).map((p) => ({ value: p.name, label: p.name, sub: p.code + tag(p) }));
     const L = key === 'dept' ? withTech(lists().dept || []) : lists()[key] || []; // 權責區分補「技術」
     return L.map((v) => ({ value: v, label: v }));
   }
@@ -282,7 +295,6 @@
       $('pickerSearch').value = '';
       $('pickerFoot').hidden = !opts.multi;
       $('pickerEdit').textContent = '編輯清單';
-      $('pickerEdit').hidden = listKeyOf(opts.key) === 'project'; // 專案清單在「專案管理」維護
       renderPicker();
       $('picker').hidden = false;
       document.body.classList.add('noscroll');
@@ -308,14 +320,15 @@
       const row = h('div', { class: 'pick-item' + (on ? ' on' : '') },
         p.multi ? h('span', { class: 'check' }, on ? '☑' : '☐') : null,
         h('span', { class: 'pick-text' }, h('b', {}, it.label), it.sub ? h('small', {}, it.sub) : null),
-        p.editMode ? h('button', {
+        // 專案清單只能刪除「支援專案」(其餘取自專案管理)
+        p.editMode && (listKeyOf(p.key) !== 'project' || (projList().find((x) => x[p.key] === it.value) || {}).support) ? h('button', {
           type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: async (e) => {
             e.stopPropagation();
             const lk = listKeyOf(p.key);
             const item = lk === 'project' ? projList().find((x) => x[p.key] === it.value) : it.value;
             const label = lk === 'project' ? `${item.code} ${item.name}` : item;
             if (!(await confirmYes('刪除選單項目', `確定從清單刪除「${label}」?\n(已填入資料的內容不受影響)`, '刪除', 'btn-danger'))) return;
-            try { await choiceRemove(lk, item); p.sel.delete(it.value); } catch (err) { toast(errMsg(err), 5000); }
+            try { await (lk === 'project' ? choiceRemove('support', item.raw) : choiceRemove(lk, item)); p.sel.delete(it.value); } catch (err) { toast(errMsg(err), 5000); }
             if (picker === p) renderPicker();
           },
         }, '🗑') : null);
@@ -331,7 +344,18 @@
     add.innerHTML = '';
     const lk = listKeyOf(p.key);
     if (lk === 'project') {
-      add.append(h('div', { class: 'hint' }, '專案清單取自「專案管理」;新專案請在專案管理新增,或直接在欄位手動輸入'));
+      const ci = h('input', { type: 'text', placeholder: '專案代號', 'aria-label': '支援專案代號' });
+      const ni = h('input', { type: 'text', placeholder: '專案名稱', 'aria-label': '支援專案名稱' });
+      if (kw) (p.key === 'code' ? ci : ni).value = $('pickerSearch').value.trim();
+      add.append(h('div', { class: 'hint' }, '需專案管理的專案請在「專案管理」新增;人力支援等專案可在此直接加入'), ci, ni, h('button', {
+        type: 'button', class: 'btn btn-primary btn-sm', onclick: async () => {
+          const item = { code: ci.value.trim(), name: ni.value.trim() };
+          if (!item.code || !item.name) return toast('請輸入專案代號與專案名稱');
+          if (projList().some((x) => x.code.toLowerCase() === item.code.toLowerCase())) return toast('清單中已有此專案代號');
+          try { await choiceAdd('support', item.code + SUP_SEP + item.name); } catch (err) { return toast(errMsg(err), 5000); }
+          if (p.multi) { p.sel.add(item[p.key]); renderPicker(); } else closePicker(item[p.key]);
+        },
+      }, '＋ 加入支援專案'));
     } else {
       const inp = h('input', { type: 'text', placeholder: '新增項目', 'aria-label': '新增項目' });
       if (kw) inp.value = $('pickerSearch').value.trim();
@@ -2116,12 +2140,36 @@
     const box = $('listEditors');
     box.innerHTML = '';
     for (const L of CFG.LISTS) {
-      const items = L.key === 'project' ? projDesc() : (lists()[L.key] || []);
+      const items = L.key === 'project' ? projDesc().filter((p) => !p.support) : (lists()[L.key] || []);
       if (L.key === 'project') { // 唯讀:取自專案管理檔,在「專案管理」新增/修改
         box.append(h('details', { class: 'panel list-panel' },
           h('summary', { class: 'panel-title' }, `${L.label}`, h('span', { class: 'count' }, String(items.length))),
           h('div', { class: 'hint' }, '取自「專案管理」(Project Managment.xlsx),請在專案管理頁新增或修改'),
           h('div', { class: 'list-items' }, ...items.map((it) => h('div', { class: 'list-item' }, h('span', {}, h('b', {}, it.code), ' ', it.name))))));
+        continue;
+      }
+      if (L.key === 'support') { // 一格「代號｜名稱」,以代號 + 名稱兩欄輸入
+        const sup = supportList().sort((a, b) => newestFirst(a.code, b.code));
+        const ci = h('input', { type: 'text', placeholder: '專案代號' }), ni = h('input', { type: 'text', placeholder: '專案名稱' });
+        box.append(h('details', { class: 'panel list-panel', open: true },
+          h('summary', { class: 'panel-title' }, `${L.label}`, h('span', { class: 'count' }, String(sup.length))),
+          h('div', { class: 'hint' }, '人力支援等不需建立專案管理的專案;會與專案管理的專案一起出現在各頁的專案下拉選單'),
+          h('div', { class: 'list-items' }, ...sup.map((it) => h('div', { class: 'list-item' }, h('span', {}, h('b', {}, it.code), ' ', it.name), h('button', {
+            type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: async () => {
+              if (!(await confirmYes('刪除支援專案', `確定刪除「${it.code} ${it.name}」?\n(已填入資料的內容不受影響)`, '刪除', 'btn-danger'))) return;
+              try { await choiceRemove('support', it.raw); toast('已刪除'); } catch (err) { toast(errMsg(err), 5000); }
+              renderListEditors();
+            },
+          }, '🗑')))),
+          h('div', { class: 'add-row two' }, ci, ni, h('button', {
+            type: 'button', class: 'btn btn-primary btn-sm', onclick: async () => {
+              const c = ci.value.trim(), n = ni.value.trim();
+              if (!c || !n) return toast('請輸入專案代號與專案名稱');
+              if (projList().some((x) => x.code.toLowerCase() === c.toLowerCase())) return toast('清單中已有此專案代號');
+              try { await choiceAdd('support', c + SUP_SEP + n); toast('已新增'); } catch (err) { return toast(errMsg(err), 5000); }
+              renderListEditors();
+            },
+          }, '＋ 加入'))));
         continue;
       }
       const ul = h('div', { class: 'list-items' });
