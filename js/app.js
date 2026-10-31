@@ -256,9 +256,8 @@
   const newestFirst = (a, b) => Store.compareCode(b, a); // 下拉選單:越新的專案排越上面
   const projDesc = () => projList().slice().sort((a, b) => newestFirst(a.code, b.code));
   function listValues(key) {
-    const tag = (p) => (p.support ? '(支援)' : '');
-    if (key === 'code') return projDesc().filter((p) => p.code).map((p) => ({ value: p.code, label: p.code, sub: p.name + tag(p) }));
-    if (key === 'name') return projDesc().filter((p) => p.name).map((p) => ({ value: p.name, label: p.name, sub: p.code + tag(p) }));
+    if (key === 'code') return projDesc().filter((p) => p.code).map((p) => ({ value: p.code, label: p.code, sub: p.name }));
+    if (key === 'name') return projDesc().filter((p) => p.name).map((p) => ({ value: p.name, label: p.name, sub: p.code }));
     const L = key === 'dept' ? withTech(lists().dept || []) : lists()[key] || []; // 權責區分補「技術」
     return L.map((v) => ({ value: v, label: v }));
   }
@@ -295,6 +294,7 @@
       $('pickerSearch').value = '';
       $('pickerFoot').hidden = !opts.multi;
       $('pickerEdit').textContent = '編輯清單';
+      $('pickerEdit').hidden = listKeyOf(opts.key) === 'project' && !isAdmin(); // 支援專案只有管理者可刪除
       renderPicker();
       $('picker').hidden = false;
       document.body.classList.add('noscroll');
@@ -320,8 +320,8 @@
       const row = h('div', { class: 'pick-item' + (on ? ' on' : '') },
         p.multi ? h('span', { class: 'check' }, on ? '☑' : '☐') : null,
         h('span', { class: 'pick-text' }, h('b', {}, it.label), it.sub ? h('small', {}, it.sub) : null),
-        // 專案清單只能刪除「支援專案」(其餘取自專案管理)
-        p.editMode && (listKeyOf(p.key) !== 'project' || (projList().find((x) => x[p.key] === it.value) || {}).support) ? h('button', {
+        // 專案清單只能刪除「支援專案」(其餘取自專案管理),且只限管理者
+        p.editMode && (listKeyOf(p.key) !== 'project' || (isAdmin() && (projList().find((x) => x[p.key] === it.value) || {}).support)) ? h('button', {
           type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: async (e) => {
             e.stopPropagation();
             const lk = listKeyOf(p.key);
