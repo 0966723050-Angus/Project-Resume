@@ -100,6 +100,11 @@
 - 每天 08:30 檢查:追蹤/殘件事項(狀態不是 Close、改善期限已過)與專案管理未結案專案的追蹤事項(狀態不是 Close、期限已過),有逾期才寄信(依逾期天數排序的表格);手機 Gmail App 開通知即會跳出
 - 設定:Apps Script 編輯器貼上最新 `gas/Code.gs` → 儲存 → 選 `installDailyNotify` 執行一次(授權寄信);`testNotify` 可立即寄一封測試信。收件者改 `NOTIFY_TO`
 
+### 每日 02:00 自動備份(Apps Script)
+- 備份 Project Resume.xlsx、Project Management.xlsx、Work List.xlsm、Project Schedule.json 到 Project Resume.xlsx 同資料夾的
+  `專案履歷備份/yyyy-MM-dd/`;保留 30 天(`BACKUP_KEEP_DAYS`),較舊的日期資料夾移到垃圾桶
+- 設定:Apps Script 編輯器貼上最新 `gas/Code.gs` → 儲存 → 選 `installDailyBackup` 執行一次(建立排程並立即備份一次);`dailyBackup` 可隨時手動備份
+
 ### 分享連結免登入
 - 連結格式 `…/#/v/<履歷編號>?k=<分享碼>`;分享碼存在 Excel「分享碼」欄(新履歷自動產生,舊履歷在第一次複製連結時補上)
 - 未登入時經由 Google Apps Script 網頁應用程式(`gas/Code.gs`,以管理者身分執行)讀取 Excel,只回傳編號與分享碼都相符的那份履歷;

@@ -5,6 +5,7 @@
  *       執行身分:我(管理者)  /  誰可以存取:所有人  → 複製網址貼到 js/config.js 的 SHARE_URL
  *       更新程式後:部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署(網址不變)
  *       加速:在編輯器選函式 installWarmTrigger → 執行一次(建立每 10 分鐘預熱排程)
+ *       備份:在編輯器選函式 installDailyBackup → 執行一次(建立每日 02:00 備份排程並立即備份)
  * 安全:只回傳「履歷編號 + 分享碼」都相符的那一份履歷;圖片/附件也只限該履歷中有列出的檔案。
  *
  *   ?id=<履歷編號>&k=<分享碼>                → { ok, resume }
@@ -258,6 +259,64 @@ function sendOverdue(always) {
     htmlBody: overdueHtml(r) + (pmFile ? '' : '<p>(找不到 Project Management.xlsx)</p>'),
     name: 'ATK專案履歷',
   });
+}
+
+// ── 每日 02:00 自動備份 ──
+// 備份到 Project Resume.xlsx 所在資料夾下的「專案履歷備份/yyyy-MM-dd」,保留 BACKUP_KEEP_DAYS 天(較舊的移到垃圾桶)
+var BACKUP_FOLDER = '專案履歷備份';
+var BACKUP_KEEP_DAYS = 30;
+var WORK_FILE_ID = '1bss9sYHoav894eaCxA9u68CcfHNuYUNZ'; // Work List.xlsm(同 js/config.js 的 WORK.FILE_ID)
+var SCHED_FILE = 'Project Schedule.json';               // 與 Project Management.xlsx 同資料夾
+
+// 在編輯器執行一次:建立每日 02:00 備份排程,並立即備份一次
+function installDailyBackup() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (['dailyBackupPlan', 'dailyBackup'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
+  });
+  // 同每日通知:每天 1 點多先排好當天 02:00 的單次排程(準時到分鐘)
+  ScriptApp.newTrigger('dailyBackupPlan').timeBased().everyDays(1).atHour(1).inTimezone(TZ).create();
+  dailyBackupPlan();
+  dailyBackup();
+}
+function dailyBackupPlan() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'dailyBackup') ScriptApp.deleteTrigger(t); });
+  var at = new Date(Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'02:00:00") + '+08:00');
+  if (at.getTime() > Date.now()) ScriptApp.newTrigger('dailyBackup').timeBased().at(at).create();
+}
+function dailyBackup() {
+  var resume = getFile();
+  var pmFile = findByNames(PM_FILE_NAMES, 'PM_FILE_ID');
+  var files = [resume, pmFile];
+  try { files.push(DriveApp.getFileById(WORK_FILE_ID)); } catch (err) { Logger.log('找不到 Work List.xlsm:' + err); }
+  if (pmFile) {
+    var pmDirs = pmFile.getParents();
+    if (pmDirs.hasNext()) { var sf = pmDirs.next().getFilesByName(SCHED_FILE); if (sf.hasNext()) files.push(sf.next()); }
+  }
+  var dirs = resume.getParents();
+  var base = dirs.hasNext() ? dirs.next() : DriveApp.getRootFolder();
+  var root = subFolder(base, BACKUP_FOLDER);
+  var day = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+  var dest = subFolder(root, day);
+  var done = [];
+  files.forEach(function (f) {
+    if (!f || f.isTrashed()) return;
+    var old = dest.getFilesByName(f.getName()); // 同一天重跑:先移除舊的
+    while (old.hasNext()) old.next().setTrashed(true);
+    f.makeCopy(f.getName(), dest);
+    done.push(f.getName());
+  });
+  // 清除超過保留天數的日期資料夾
+  var limit = Utilities.formatDate(new Date(Date.now() - BACKUP_KEEP_DAYS * 86400000), TZ, 'yyyy-MM-dd');
+  var it = root.getFolders();
+  while (it.hasNext()) {
+    var d = it.next();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d.getName()) && d.getName() < limit) d.setTrashed(true);
+  }
+  Logger.log('已備份到 ' + BACKUP_FOLDER + '/' + day + ':' + done.join('、'));
+}
+function subFolder(parent, name) {
+  var it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
 }
 
 // 依檔名找檔案(記住 ID,下次免搜尋)
