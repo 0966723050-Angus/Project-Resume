@@ -262,9 +262,9 @@ function sendOverdue(always) {
 }
 
 // ── 每日 02:00 自動備份 ──
-// 備份到 Project Resume.xlsx 所在資料夾下的「專案履歷備份/yyyy-MM-dd」,保留 BACKUP_KEEP_DAYS 天(較舊的移到垃圾桶)
+// 備份到 Project Resume.xlsx 所在資料夾下的「專案履歷備份/yyyy-MM-dd」,只保留最新 BACKUP_KEEP 份(較舊的移到垃圾桶)
 var BACKUP_FOLDER = '專案履歷備份';
-var BACKUP_KEEP_DAYS = 30;
+var BACKUP_KEEP = 5;
 var WORK_FILE_ID = '1bss9sYHoav894eaCxA9u68CcfHNuYUNZ'; // Work List.xlsm(同 js/config.js 的 WORK.FILE_ID)
 var SCHED_FILE = 'Project Schedule.json';               // 與 Project Management.xlsx 同資料夾
 
@@ -305,13 +305,12 @@ function dailyBackup() {
     f.makeCopy(f.getName(), dest);
     done.push(f.getName());
   });
-  // 清除超過保留天數的日期資料夾
-  var limit = Utilities.formatDate(new Date(Date.now() - BACKUP_KEEP_DAYS * 86400000), TZ, 'yyyy-MM-dd');
+  // 日期資料夾由新到舊排序,第 BACKUP_KEEP 份之後的移到垃圾桶(中間漏備份的日子不影響份數)
+  var days = [];
   var it = root.getFolders();
-  while (it.hasNext()) {
-    var d = it.next();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(d.getName()) && d.getName() < limit) d.setTrashed(true);
-  }
+  while (it.hasNext()) { var d = it.next(); if (/^\d{4}-\d{2}-\d{2}$/.test(d.getName())) days.push(d); }
+  days.sort(function (a, b) { return a.getName() < b.getName() ? 1 : -1; });
+  days.slice(BACKUP_KEEP).forEach(function (d) { d.setTrashed(true); });
   Logger.log('已備份到 ' + BACKUP_FOLDER + '/' + day + ':' + done.join('、'));
 }
 function subFolder(parent, name) {

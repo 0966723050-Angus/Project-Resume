@@ -102,7 +102,7 @@
 
 ### 每日 02:00 自動備份(Apps Script)
 - 備份 Project Resume.xlsx、Project Management.xlsx、Work List.xlsm、Project Schedule.json 到 Project Resume.xlsx 同資料夾的
-  `專案履歷備份/yyyy-MM-dd/`;保留 30 天(`BACKUP_KEEP_DAYS`),較舊的日期資料夾移到垃圾桶
+  `專案履歷備份/yyyy-MM-dd/`;只保留最新 5 份(`BACKUP_KEEP`),每次備份後最舊的日期資料夾移到垃圾桶
 - 設定:Apps Script 編輯器貼上最新 `gas/Code.gs` → 儲存 → 選 `installDailyBackup` 執行一次(建立排程並立即備份一次);`dailyBackup` 可隨時手動備份
 
 ### 分享連結免登入
