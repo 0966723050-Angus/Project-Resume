@@ -173,7 +173,7 @@ main { max-width: 900px; margin: 0 auto; padding: 12px 16px calc(96px + var(--sa
   width: 100%; min-height: 44px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2);
   padding: 9px 12px; font-size: 16px; /* 16px 避免 iOS 自動放大 */
 }
-.field input[type="date"], .field input[type="datetime-local"] { -webkit-appearance: none; appearance: none; display: block; text-align: left; }
+.field input[type="date"], .field input[type="datetime-local"] { -webkit-appearance: none; appearance: none; display: flex; align-items: center; text-align: left; }
 .field textarea { resize: vertical; line-height: 1.5; min-height: 64px; }
 .field input:focus, .field textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 .form-actions { display: flex; gap: 10px; margin-top: 4px; }
@@ -412,8 +412,9 @@ textarea.link-box { min-height: 72px; padding: 8px 10px; resize: none; }
 /* iPhone Safari:日期欄預設有最小寬度且置中顯示,會撐出區塊 → 取消原生外觀、限制寬度、文字靠左 */
 input[type="date"], input[type="datetime-local"] {
   -webkit-appearance: none; appearance: none; box-sizing: border-box;
-  min-width: 0; max-width: 100%; display: block; text-align: left;
+  min-width: 0; max-width: 100%; display: flex; align-items: center; text-align: left;
 }
+/* iPhone 的日期文字預設貼齊上緣 → 以 flex 垂直置中 */
 input[type="date"]::-webkit-date-and-time-value, input[type="datetime-local"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
 .sched-dates input[type="date"] { width: 100%; background: var(--surface); }
 .sched-dates label, .sched-dates > * { min-width: 0; overflow: hidden; }
