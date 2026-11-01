@@ -164,14 +164,13 @@ window.APP_CONFIG = {
   },
 
   // 「近期工作項目 / 甘特圖」(原 Work-List-Web):共用雲端硬碟上的 Work List.xlsm,工作表「List」A2:I17
-  // 誰能看/能存依該檔的雲端硬碟共用設定;編輯另需密碼(雜湊比對),設定頁可指定免密碼的人員
+  // 誰能看/能存依該檔的雲端硬碟共用設定;能否編輯另依「設定 → 權限」的「近期工作項目編輯」
   WORK: {
     FILE_ID: '1bss9sYHoav894eaCxA9u68CcfHNuYUNZ',
     FILE_NAME: 'Work List.xlsm',
     SHEET: 'List',
     MIN_ROW: 2,
     MAX_ROW: 17,
-    EDIT_PASSWORD_HASH: '6f8c41020e56d0972ca7529a39855ea79ddc499a107381671b6d2f46741a7d00',
   },
 
   // 分享連結免登入檢視:Google Apps Script 網頁應用程式網址(gas/Code.gs,以管理者身分讀取 Excel,

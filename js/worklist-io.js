@@ -1,7 +1,7 @@
 // worklist-io.js - ATK工作項目(Work List.xlsm)讀寫
-// 讀取:以 Store.Book 解析「List」A~I 欄、「資料庫」(已結案)、「人員」(人員下拉名單)、「權限」(免密碼)
+// 讀取:以 Store.Book 解析「List」A~I 欄、「資料庫」(已結案)、「人員」(人員下拉名單)、「權限」(舊版免密碼名單,僅供移轉到專案履歷的權限設定)
 // 寫入:只對 List 工作表做「最小幅度」修改(改動到的儲存格),保留 VBA 巨集與內嵌的 Schedule 圖表;
-//       資料庫 / 人員 / 權限工作表整張重寫(不存在時自動新增)
+//       資料庫 / 人員工作表整張重寫(不存在時自動新增)
 (function () {
   const W = window.APP_CONFIG.WORK;
   const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -103,8 +103,6 @@
   }
 
   const PERM_SHEET = '權限';
-  const PERM_CHECKED = '☑免密碼';
-  const PERM_UNCHECKED = '☐免密碼';
   function parsePermissions(g) {
     if (!g) return [];
     const out = [];
@@ -316,18 +314,5 @@
     return fflate.zipSync(zip, { level: 6 });
   }
 
-  // 只改寫「權限」工作表,其餘內容(List、資料庫、VBA、圖表)原封不動
-  function buildPermissions(originalBytes, entries) {
-    const zip = fflate.unzipSync(new Uint8Array(originalBytes));
-    const body = entries.map((e, i) => {
-      const r = i + 2;
-      return `<row r="${r}">${textCell(`A${r}`, e.email, 2)}${textCell(`B${r}`, e.noPassword ? PERM_CHECKED : PERM_UNCHECKED, 2)}</row>`;
-    }).join('');
-    zip[ensureSheetPath(zip, PERM_SHEET)] = enc(sheetXml(`<sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="20"/>` +
-      `<cols><col min="1" max="1" width="40" customWidth="1"/><col min="2" max="2" width="18" customWidth="1"/></cols>` +
-      `<sheetData><row r="1">${textCell('A1', '人員', 5)}</row>${body}</sheetData>`));
-    return fflate.zipSync(zip, { level: 6 });
-  }
-
-  window.WorkIO = { parse, buildPatched, buildPermissions, serialToISODate, isoDateToSerial, MIME: 'application/vnd.ms-excel.sheet.macroEnabled.12' };
+  window.WorkIO = { parse, buildPatched, grid, ensureSheetPath, serialToISODate, isoDateToSerial, MIME: 'application/vnd.ms-excel.sheet.macroEnabled.12' };
 })();

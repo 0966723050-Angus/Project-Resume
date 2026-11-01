@@ -493,10 +493,19 @@ body.wide-main main { max-width: none; }
 .wl-done-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--text); }
 .wl-done-name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 .wl-done-name small { display: block; font-weight: 400; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
-.wl-perm { cursor: pointer; }
-.wl-perm small { display: block; font-size: 12px; color: var(--muted); }
-.wl-perm-cb { width: 20px; height: 20px; flex: none; }
-.wl-perm-save { justify-content: flex-end; margin-top: 12px; }
+/* 設定 → 權限:每人一列,email 下方一排核取方塊(手機自動換行) */
+.perm-row { flex-direction: column; align-items: stretch; gap: 6px; }
+.perm-who { word-break: break-all; }
+.perm-who small { display: block; font-size: 12px; color: var(--muted); }
+.perm-cbs { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.perm-cb { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+.perm-cb input { width: 18px; height: 18px; margin: 0; }
+.perm-cb:has(input:disabled) { cursor: default; opacity: .7; }
+.perm-save { justify-content: flex-end; margin-top: 12px; }
+/* 專案管理「只能檢視」:隱藏新增/刪除/存檔類按鈕,表單不能點 */
+body.pm-ro #pmAdd, body.pm-ro #pmAddTrack, body.pm-ro #pmDelete, body.pm-ro #schedAdd, body.pm-ro #schedColors { display: none !important; }
+body.pm-ro :is(#pmFields, #pmTracks, #pmClosedBox, #schedHead, #schedItems) { pointer-events: none; }
+body.pm-ro #pmFields details > summary { pointer-events: auto; }
 
 .wl-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 10px; font-size: 12.5px; color: var(--muted); }
 .wl-legend span { display: inline-flex; align-items: center; gap: 6px; }

@@ -64,8 +64,6 @@
       if (!Drive.isSignedIn()) await Drive.requestToken(Drive.savedAccount() ? '' : undefined);
       S.user = await Drive.whoAmI().catch(() => null);
       if (S.user) $('userLine').textContent = `${S.user.displayName}\n${S.user.emailAddress}`;
-      $('navSettings').hidden = !isAdmin(); // 設定只有管理者看得到
-      $('navPm').hidden = !isAdmin(); // 專案管理只有管理者看得到
       busy(`尋找「${CFG.FILE_NAME}」…`);
       const f = await Drive.findByName(CFG.FILE_NAME);
       if (!f) {
@@ -78,8 +76,9 @@
       S.fileId = f.id;
       await reload();
       S.ready = true;
+      applyPerms();
       WorkList.available().then((ok) => { $('navWork').hidden = $('navGantt').hidden = !ok; });
-      if (isAdmin()) pmLoad(false, true).then(() => { if (!$('listView').hidden) fillCodeFilter(); }).catch(() => {}); // 專案清單以專案管理檔為準
+      if (can('pmView')) pmLoad(false, true).then(() => { if (!$('listView').hidden) fillCodeFilter(); }).catch(() => {}); // 專案清單以專案管理檔為準
       route();
     } catch (err) {
       toast(errMsg(err), 5000);
@@ -144,6 +143,23 @@
   const myEmail = () => String((S.user && S.user.emailAddress) || '').toLowerCase();
   const myName = () => (S.user && (S.user.displayName || S.user.emailAddress)) || '';
   const isAdmin = () => CFG.ADMINS.map((x) => x.toLowerCase()).includes(myEmail());
+  // 各項權限(設定 → 權限;存在 Project Resume.xlsx「權限」工作表);管理者固定擁有全部權限
+  let permCache = { data: null, list: null };
+  function permList() {
+    if (permCache.data !== S.data) permCache = { data: S.data, list: (S.data && Perms.read(S.data.book)) || null };
+    return permCache.list;
+  }
+  const can = (key) => isAdmin() || (permList() || []).some((p) => p.email === myEmail() && p[key]);
+  // 依權限顯示側邊選單;專案管理「只能檢視」時鎖住表單(body.pm-ro)
+  function applyPerms() {
+    $('navSettings').hidden = !can('settings');
+    $('navPm').hidden = !can('pmView');
+    document.body.classList.toggle('pm-ro', !can('pmEdit'));
+  }
+  function pmLock() {
+    if (can('pmEdit')) return;
+    for (const el of document.querySelectorAll('#pmFields :is(input, select, textarea, button), #pmTracks :is(input, select, textarea, button), #pmClosedBox :is(input, select, textarea, button), #schedHead :is(input, select, textarea, button), #schedItems :is(input, select, textarea, button)')) el.disabled = true;
+  }
   const canEdit = (rec) => isAdmin() || (!!rec.authorEmail && String(rec.authorEmail).toLowerCase() === myEmail());
   const authorLine = (rec) => '填表人:' + (rec.author || '(未記錄)');
   function markDirty() { $('saveBtn').classList.toggle('dirty', isDirty()); }
@@ -171,9 +187,9 @@
     else if (parts[0] === 'r') openResume(parts[1] || 'new');
     else if (parts[0] === 'remain' && parts[1]) openRemain(parts[1], q.get('p'));
     else if (parts[0] === 'remain') showRemainList(q.get('p'));
-    else if (parts[0] === 'settings' && isAdmin()) showSettings();
-    else if (parts[0] === 'pm' && isAdmin()) (parts[1] ? openPm(parts[1]) : showPmList());
-    else if (parts[0] === 'sched' && parts[1] && isAdmin()) openSched(parts[1]);
+    else if (parts[0] === 'settings' && can('settings')) showSettings();
+    else if (parts[0] === 'pm' && can('pmView')) (parts[1] && !(parts[1] === 'new' && !can('pmEdit')) ? openPm(parts[1]) : showPmList());
+    else if (parts[0] === 'sched' && parts[1] && can('pmView')) openSched(parts[1]);
     else if (parts[0] === 'work') WorkList.show('list');
     else if (parts[0] === 'gantt') WorkList.show('gantt');
     else showList();
@@ -250,7 +266,7 @@
     return [...base, ...supportList().filter((p) => !have.has(p.code))];
   }
   async function syncChoiceProjects() {
-    if (!isAdmin() || !S.pm || !S.pm.data) return;
+    if (!can('pmEdit') || !S.pm || !S.pm.data) return;
     const want = pmProjects();
     const key = (L) => JSON.stringify(L.map((p) => [p.code, p.name]));
     if (!want.length || key(want) === key(lists().projects)) return;
@@ -326,7 +342,7 @@
         p.multi ? h('span', { class: 'check' }, on ? '☑' : '☐') : null,
         h('span', { class: 'pick-text' }, h('b', {}, it.label), it.sub ? h('small', {}, it.sub) : null),
         // 專案清單只能刪除「支援專案」(其餘取自專案管理),且只限管理者
-        p.editMode && (listKeyOf(p.key) !== 'project' || (isAdmin() && (projList().find((x) => x[p.key] === it.value) || {}).support)) ? h('button', {
+        p.editMode && (listKeyOf(p.key) !== 'project' || (can('settings') && (projList().find((x) => x[p.key] === it.value) || {}).support)) ? h('button', {
           type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: async (e) => {
             e.stopPropagation();
             const lk = listKeyOf(p.key);
@@ -1244,7 +1260,7 @@
   }
   function renderRemainList() {
     // 從專案管理切過來時(且仍選同一專案)顯示「返回專案管理」
-    $('backToPm').hidden = !(S.pmReturn && S.pmReturn.row && isAdmin() && $('rProject').value === S.pmReturn.code);
+    $('backToPm').hidden = !(S.pmReturn && S.pmReturn.row && can('pmView') && $('rProject').value === S.pmReturn.code);
     const items = currentRemains();
     const box = $('remainList');
     box.innerHTML = '';
@@ -1637,8 +1653,8 @@
       for (const t of obj.tracks) t._loaded = true; // 從 Excel 讀進來的追蹤事項(即使只有狀態)存檔時一律保留
     }
     editing = { type: 'pm', obj, snapshot: JSON.stringify(obj), isNew, uploads: [] };
-    $('pmDelete').hidden = isNew;
-    showView('pmEditView', { title: pmTitle(obj, isNew), sub: obj.name || '', back: '#/pm', save: true });
+    $('pmDelete').hidden = isNew || !can('pmEdit');
+    showView('pmEditView', { title: pmTitle(obj, isNew), sub: obj.name || '', back: '#/pm', save: can('pmEdit') });
     S.pmTrackFilter = 'Open';
     S.pmFoldKeep = false;
     $('pmTrackSec').open = false; // 追蹤事項每次進入先收合
@@ -1749,6 +1765,7 @@
     const cb = $('pmClosedBox');
     cb.innerHTML = '';
     cb.append(fChips('結案', obj, 'closed', CFG.PM.CLOSED_OPTIONS));
+    pmLock();
   }
   const isClosed = (t) => String(t.status || '').toLowerCase() === 'close';
   const TRACK_FILTERS = [['Open', 'Open'], ['Close', 'Close'], ['all', '全部']];
@@ -1795,6 +1812,7 @@
     const empty = $('pmTrackEmpty');
     empty.hidden = shown > 0;
     empty.textContent = !obj.tracks.length ? '尚無追蹤事項,按下方「＋ 追蹤事項」新增' : filter === 'Close' ? '沒有已 Close 的追蹤事項' : '沒有 Open 的追蹤事項';
+    pmLock();
   }
   $('pmAddTrack').onclick = () => {
     editing.obj.tracks.push(blankTrack());
@@ -1806,7 +1824,7 @@
   };
 
   async function savePm() {
-    if (!isAdmin()) { toast('只有管理者可以編輯專案管理'); return false; }
+    if (!can('pmEdit')) { toast('沒有專案管理的編輯權限'); return false; }
     const obj = editing.obj;
     if (!String(obj.code || '').trim()) { toast('請填寫專案代號'); return false; }
     const rec = clone(obj);
@@ -1899,7 +1917,7 @@
     if (!obj.items.length) obj.items.push({ name: '', days: '', start: obj.start || '' });
     editing = { type: 'sched', obj, snapshot: JSON.stringify(obj), isNew: !saved, uploads: [] };
     const back = S.schedReturn && S.schedReturn.code === code && S.schedReturn.row ? '#/pm/' + S.schedReturn.row : '#/pm';
-    showView('schedView', { title: `${code} Schedule`, sub: pmRec ? pmRec.name : '', back, save: true });
+    showView('schedView', { title: `${code} Schedule`, sub: pmRec ? pmRec.name : '', back, save: can('pmEdit') });
     $('schedChart').hidden = true;
     for (const d of document.querySelectorAll('.sched-sec')) d.open = false; // 每次進入都先收合
     renderSchedForm();
@@ -1983,6 +2001,7 @@
       startDrag(handle, row);
       box.append(row);
     });
+    pmLock();
   }
 
   // 拖曳排序(滑鼠與觸控都可):按住 ≡ 上下移動,放開時依位置調整順序
@@ -2062,7 +2081,7 @@
     const d = schedData();
     if (!d.items.length) return toast('請先新增工作項目');
     renderChart(d).scrollIntoView({ behavior: 'smooth', block: 'start' });
-    await saveSched({ chart: clone(d) });
+    if (can('pmEdit')) await saveSched({ chart: clone(d) }); // 只能檢視:只畫圖不存檔
   }
   $('schedDraw').onclick = drawSched;
   // 點長條圖:全螢幕檢視(手機橫放可放大,可雙指縮放)
@@ -2115,6 +2134,7 @@
   };
 
   async function saveSched(opts = {}) {
+    if (!can('pmEdit')) { toast('沒有專案管理的編輯權限'); return false; }
     const obj = editing.obj;
     const rec = {
       title: obj.title, start: obj.start, end: obj.end, updated: new Date().toISOString(),
@@ -2156,8 +2176,7 @@
       h('div', { class: 'hint' }, `檔案 ID(供分享連結 Apps Script 的 FILE_ID):${S.fileId || ''}`),
       h('div', { class: 'hint' }, CFG.SHARE_URL ? '分享連結:免登入檢視已啟用' : '分享連結:尚未設定 SHARE_URL,開啟連結需登入'));
     renderListEditors();
-    $('workSettings').innerHTML = '';
-    WorkList.renderSettings($('workSettings'));
+    renderPermEditor();
   }
   function renderListEditors() {
     const box = $('listEditors');
@@ -2174,7 +2193,7 @@
       if (L.key === 'support') { // 一格「代號｜名稱」,以代號 + 名稱兩欄輸入
         const sup = supportList().sort((a, b) => newestFirst(a.code, b.code));
         const ci = h('input', { type: 'text', placeholder: '專案代號' }), ni = h('input', { type: 'text', placeholder: '專案名稱' });
-        box.append(h('details', { class: 'panel list-panel', open: true },
+        box.append(h('details', { class: 'panel list-panel' },
           h('summary', { class: 'panel-title' }, `${L.label}`, h('span', { class: 'count' }, String(sup.length))),
           h('div', { class: 'hint' }, '人力支援等不需建立專案管理的專案;會與專案管理的專案一起出現在各頁的專案下拉選單'),
           h('div', { class: 'list-items' }, ...sup.map((it) => h('div', { class: 'list-item' }, h('span', {}, h('b', {}, it.code), ' ', it.name), h('button', {
@@ -2218,10 +2237,79 @@
           renderListEditors();
         },
       }, '＋ 加入');
-      box.append(h('details', { class: 'panel list-panel', open: L.key !== 'project' || null },
+      box.append(h('details', { class: 'panel list-panel' },
         h('summary', { class: 'panel-title' }, `${L.label}`, h('span', { class: 'count' }, String(items.length))),
         ul, h('div', { class: 'add-row' + (L.key === 'project' ? ' two' : '') }, ...inputs, addBtn)));
     }
+  }
+  // 權限:每位人員以核取方塊指定各項權限;名單 = 專案履歷與 Work List 檔案的雲端硬碟共用人員 + 已設定的人員
+  const ROLE_LABELS = { owner: '擁有者', organizer: '擁有者', writer: '編輯者', fileOrganizer: '編輯者', commenter: '留言者', reader: '檢視者' };
+  function renderPermEditor() {
+    const box = $('permEditor');
+    box.innerHTML = '';
+    const body = h('div', {}, h('div', { class: 'empty small' }, '展開後載入人員名單…'));
+    let draft = null;
+    const panel = h('details', { class: 'panel list-panel' },
+      h('summary', { class: 'panel-title' }, '權限'),
+      h('div', { class: 'hint' }, '勾選每位人員可使用的功能;沒有勾選「專案管理檢視」或「設定」的人看不到該頁面。管理者固定擁有全部權限。設定存在 Excel「權限」工作表。'),
+      body);
+    const renderRows = () => {
+      body.innerHTML = '';
+      body.append(h('div', { class: 'list-items' }, ...draft.map((p) => {
+        const admin = CFG.ADMINS.map((x) => x.toLowerCase()).includes(p.email);
+        const boxes = Perms.KEYS.map((k) => {
+          const cb = h('input', { type: 'checkbox' });
+          cb.checked = admin || !!p[k.key];
+          cb.disabled = admin;
+          cb.onchange = () => {
+            p[k.key] = cb.checked;
+            if (k.key === 'pmEdit' && cb.checked) p.pmView = true; // 能編輯一定看得到
+            if (k.key === 'pmView' && !cb.checked) p.pmEdit = false;
+            renderRows();
+          };
+          return h('label', { class: 'perm-cb' }, cb, k.label);
+        });
+        return h('div', { class: 'list-item perm-row' },
+          h('div', { class: 'perm-who' }, p.email, h('small', {}, admin ? '管理者' : p.role ? ROLE_LABELS[p.role] || p.role : '不在目前共用名單')),
+          h('div', { class: 'perm-cbs' }, ...boxes));
+      })), h('div', { class: 'btn-row perm-save' }, h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: savePerms }, '儲存權限')));
+    };
+    async function savePerms() {
+      const entries = draft.filter((p) => Perms.KEYS.some((k) => p[k.key]))
+        .map((p) => Object.fromEntries([['email', p.email], ...Perms.KEYS.map((k) => [k.key, !!p[k.key]])]));
+      try {
+        await commit('儲存權限…', (d) => { Perms.write(d.book, entries); });
+        applyPerms();
+        toast('✅ 權限已儲存');
+      } catch (err) {
+        toast(err.status === 403 ? '儲存失敗:您沒有此檔案的編輯權限' : '儲存失敗:' + errMsg(err), 6000);
+      }
+    }
+    panel.addEventListener('toggle', async () => {
+      if (!panel.open || draft) return;
+      const people = [];
+      let note = '';
+      for (const id of [S.fileId, CFG.WORK.FILE_ID]) {
+        try { people.push(...await Drive.permissions(id)); } catch { note = '部分檔案無法取得共用名單'; }
+      }
+      const saved = permList();
+      // 還沒有「權限」工作表:以舊版 Work List 免密碼名單預設「近期工作項目編輯」
+      const legacy = saved ? [] : await WorkList.legacyEditors();
+      const byEmail = new Map();
+      const rank = (r) => (r === 'owner' || r === 'organizer' ? 0 : r === 'writer' || r === 'fileOrganizer' ? 1 : r ? 2 : 3);
+      for (const x of people) {
+        if (!x.emailAddress) continue;
+        const email = x.emailAddress.toLowerCase();
+        const cur = byEmail.get(email);
+        if (!cur || rank(x.role) < rank(cur.role)) byEmail.set(email, { email, role: x.role });
+      }
+      for (const p of saved || []) byEmail.set(p.email, { ...(byEmail.get(p.email) || { email: p.email, role: '' }), ...p });
+      for (const e of legacy) { const cur = byEmail.get(e) || { email: e, role: '' }; cur.work = true; byEmail.set(e, cur); }
+      draft = [...byEmail.values()].sort((a, b) => rank(a.role) - rank(b.role) || a.email.localeCompare(b.email));
+      renderRows();
+      if (note) body.prepend(h('div', { class: 'hint' }, note));
+    });
+    box.append(panel);
   }
   $('reloadBtn').onclick = async () => {
     try { await reload(); toast('已重新載入'); showSettings(); } catch (err) { toast(errMsg(err), 5000); }
@@ -2313,13 +2401,9 @@
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
   // 近期工作項目 / 甘特圖(js/worklist.js)
-  async function sha256(text) {
-    const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-    return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, '0')).join('');
-  }
   WorkList.init({
-    h, toast, busy, dialog, confirmYes, errMsg, sha256, setTitle, isDirty, markDirty,
-    myEmail, showView: (id, o) => showView(id, o),
+    h, toast, busy, dialog, confirmYes, errMsg, setTitle, isDirty, markDirty,
+    myEmail, can, showView: (id, o) => showView(id, o),
     // obj:進入編輯時的資料(用來判斷是否有未儲存修改);null = 結束編輯
     setEditing: (obj) => { editing = obj ? { type: 'work', obj, snapshot: JSON.stringify(obj), isNew: false, uploads: [] } : null; markDirty(); },
   });

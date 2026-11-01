@@ -10,7 +10,7 @@
   const D = { rows: [], archive: [], roster: { hw: [], sw: [] } };
   let bytes = null;       // 最後一次下載 / 儲存的檔案內容
   let meta = null;
-  let permissions = [];   // 「權限」工作表:{ email, noPassword }
+  let permissions = [];   // 舊版「權限」工作表(免密碼名單),只用來預設專案履歷權限設定的「近期工作項目編輯」
   let loaded = false;
   let loading = null;
   let editMode = false;
@@ -19,7 +19,6 @@
   const splitNames = (s) => String(s || '').split(/[,，、;；]+/).map((n) => n.trim()).filter(Boolean);
   const fmtDate = (iso) => (iso ? iso.replace(/-/g, '/') : '-');
   const maxRows = () => W.MAX_ROW - W.MIN_ROW + 1;
-  const skipPassword = () => !!C.myEmail() && permissions.some((p) => p.email === C.myEmail() && p.noPassword);
   const pad = (n) => String(n).padStart(2, '0');
 
   function recalcDuration(row) {
@@ -114,7 +113,7 @@
   // ---------- 工作項目清單 ----------
   function renderList() {
     $('wlStatus').textContent = editMode ? `編輯中 · 共 ${D.rows.length} 筆(上限 ${maxRows()} 筆)` : statusText();
-    $('wlEdit').hidden = editMode;
+    $('wlEdit').hidden = editMode || !C.can('work'); // 編輯權限在「設定 → 權限」指定
     $('wlCancel').hidden = !editMode;
     $('wlSearchDone').hidden = !editMode;
     $('wlRefresh').hidden = editMode;
@@ -265,23 +264,9 @@
   }
 
   // ---------- 編輯模式 ----------
-  async function askPassword() {
-    const h = C.h;
-    let err = '';
-    for (;;) {
-      const inp = h('input', { type: 'password', class: 'link-box', autocomplete: 'off', placeholder: '密碼' });
-      inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); document.querySelector('#confirmBtns .btn-primary').click(); } };
-      const p = C.dialog('輸入編輯密碼', h('div', {}, '請輸入密碼以解鎖工作項目編輯', inp, err && h('div', { class: 'wl-err' }, err)),
-        [{ label: '取消', value: false }, { label: '確認', value: true, cls: 'btn-primary' }]);
-      setTimeout(() => inp.focus(), 50);
-      if (!(await p)) return false;
-      if ((await C.sha256(inp.value)) === W.EDIT_PASSWORD_HASH) return true;
-      err = '密碼錯誤,請再試一次';
-    }
-  }
   async function startEdit() {
     if (editMode || !loaded) return;
-    if (!skipPassword() && !(await askPassword())) return;
+    if (!C.can('work')) return C.toast('沒有近期工作項目的編輯權限');
     editMode = true;
     C.setEditing(D);
     $('saveBtn').hidden = false;
@@ -419,58 +404,10 @@
     window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => { if (!$('ganttView').hidden && loaded) renderGantt(); }, 200); });
   }
 
-  // ---------- 設定:編輯免密碼 ----------
-  const ROLE_LABELS = { owner: '擁有者', organizer: '擁有者', writer: '編輯者', fileOrganizer: '編輯者', commenter: '留言者', reader: '檢視者' };
-  function renderSettings(box) {
-    const h = C.h;
-    const body = h('div', {}, h('div', { class: 'empty small' }, '展開後載入共用人員名單…'));
-    let draft = null;
-    const panel = h('details', { class: 'panel list-panel' },
-      h('summary', { class: 'panel-title' }, '近期工作項目:編輯免密碼'),
-      h('div', { class: 'hint' }, `勾選的人員進入工作項目編輯時不需輸入密碼。名單為「${W.FILE_NAME}」目前的雲端硬碟共用人員,設定存在該檔的「權限」工作表。`),
-      body);
-    const renderRows = () => {
-      body.innerHTML = '';
-      body.append(h('div', { class: 'list-items' }, ...draft.map((p) => {
-        const cb = h('input', { type: 'checkbox', class: 'wl-perm-cb' });
-        cb.checked = p.noPassword;
-        cb.onchange = () => { p.noPassword = cb.checked; };
-        return h('label', { class: 'list-item wl-perm' }, h('span', {}, p.email, h('small', {}, p.role ? ROLE_LABELS[p.role] || p.role : '不在目前共用名單')), cb, '免密碼');
-      })), h('div', { class: 'btn-row wl-perm-save' }, h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: savePerms }, '儲存權限')));
-    };
-    async function savePerms() {
-      C.busy('儲存權限…');
-      try {
-        const latest = await Drive.download(W.FILE_ID); // 以雲端最新版為底,只改寫「權限」工作表
-        const entries = draft.map((p) => ({ email: p.email, noPassword: p.noPassword }));
-        const out = WorkIO.buildPermissions(latest.bytes, entries);
-        meta = await Drive.upload(W.FILE_ID, out, WorkIO.MIME);
-        if (!editMode) apply(out); else permissions = entries;
-        C.toast('✅ 權限已儲存');
-      } catch (err) {
-        C.toast(err.status === 403 ? '儲存失敗:您沒有此檔案的編輯權限' : '儲存失敗:' + C.errMsg(err), 6000);
-      } finally { C.busy(''); }
-    }
-    panel.addEventListener('toggle', async () => {
-      if (!panel.open || draft) return;
-      let people = [];
-      let note = '';
-      try {
-        if (!loaded) await load(true);
-        people = await Drive.permissions(W.FILE_ID);
-      } catch (err) {
-        if (!loaded) { body.innerHTML = ''; body.append(h('div', { class: 'empty small' }, '載入失敗:' + C.errMsg(err))); return; }
-        note = '無法取得共用名單,僅顯示已設定的人員';
-      }
-      const byEmail = new Map();
-      people.filter((p) => p.emailAddress).forEach((p) => byEmail.set(p.emailAddress.toLowerCase(), { email: p.emailAddress.toLowerCase(), role: p.role, noPassword: false }));
-      permissions.forEach((p) => { const cur = byEmail.get(p.email) || { email: p.email, role: '', noPassword: false }; cur.noPassword = p.noPassword; byEmail.set(p.email, cur); });
-      const rank = (r) => (r === 'owner' ? 0 : r === 'writer' || r === 'fileOrganizer' || r === 'organizer' ? 1 : 2);
-      draft = [...byEmail.values()].sort((a, b) => rank(a.role) - rank(b.role) || a.email.localeCompare(b.email));
-      renderRows();
-      if (note) body.prepend(h('div', { class: 'hint' }, note));
-    });
-    box.append(panel);
+  // 舊版免密碼名單(Work List.xlsm「權限」工作表);讀不到時回傳空陣列
+  async function legacyEditors() {
+    try { if (!loaded) await load(true); } catch { return []; }
+    return permissions.filter((p) => p.noPassword).map((p) => p.email);
   }
 
   function init(ctx) {
@@ -483,5 +420,5 @@
     bindGantt();
   }
 
-  window.WorkList = { init, show, save, available, renderSettings, discard: () => leaveEdit(true), isEditing: () => editMode };
+  window.WorkList = { init, show, save, available, legacyEditors, discard: () => leaveEdit(true), isEditing: () => editMode };
 })();
