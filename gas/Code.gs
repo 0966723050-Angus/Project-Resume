@@ -6,11 +6,13 @@
  *       更新程式後:部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署(網址不變)
  *       加速:在編輯器選函式 installWarmTrigger → 執行一次(建立每 10 分鐘預熱排程)
  *       備份:在編輯器選函式 installDailyBackup → 執行一次(建立每日 02:00 備份排程並立即備份)
+ *       日曆:在編輯器選函式 syncCalendar → 執行一次(授權日曆),再部署新版本;之後近期工作項目每次存檔自動同步
  * 安全:只回傳「履歷編號 + 分享碼」都相符的那一份履歷;圖片/附件也只限該履歷中有列出的檔案。
  *
  *   ?id=<履歷編號>&k=<分享碼>                → { ok, resume }
  *   ?a=file&id=<履歷編號>&k=<分享碼>&f=<檔案ID> → { ok, name, mime, data(base64) }
  *   ?a=ding&id=<履歷編號>&k=<分享碼>          → 由釘釘群組機器人發送「標題=連結」訊息 → { ok }
+ *   ?a=cal                                    → 依 Work List.xlsm 同步「已排定」項目到 Google 日曆 → { ok, created, updated, removed }
  */
 var FILE_ID = '';                       // 可填 Project Resume.xlsx 的檔案 ID(App 設定頁可複製);空白則依檔名搜尋
 var FILE_NAME = 'Project Resume.xlsx';
@@ -28,6 +30,7 @@ var MAX_FILE = 20 * 1024 * 1024;
 function doGet(e) {
   var p = (e && e.parameter) || {};
   try {
+    if (p.a === 'cal') return json(syncCalendar());
     var r = findResume(String(p.id || ''), String(p.k || ''));
     if (p.a === 'file') return json(fileOut(r, String(p.f || '')));
     if (p.a === 'ding') return json(dingSend(r, String(p.k || '')));
@@ -467,4 +470,84 @@ function resumeTitleOf(r) {
   var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(r.start || ''));
   var t = [m ? m[1] + '/' + m[2] + '/' + m[3] : '', r.code, r.name].filter(Boolean).join(' ');
   return (t ? t + ' ' : '') + '專案履歷';
+}
+
+// ---------- 近期工作項目 → Google 日曆(App 存檔後呼叫 ?a=cal;也可在編輯器直接執行 syncCalendar) ----------
+// 「已排定」的項目建立全天事件:標題「工作項目_硬體、軟體人員」、顏色羅勒綠;以事件標籤 wl 記住對應的工作項目,
+// 之後日期/人員有改就更新;項目刪除或改成其他狀態(完工除外)時移除該事件。只動本程式建立(或認領)的事件
+var CAL_NAME = 'ATK';
+var WL_SHEET = 'List', WL_ARCHIVE = '資料庫', WL_MAX_ROW = 17;
+var CAL_TAG = 'wl';
+
+function syncCalendar() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var cals = CalendarApp.getCalendarsByName(CAL_NAME);
+    if (!cals.length) throw new Error('找不到日曆「' + CAL_NAME + '」');
+    var cal = cals[0];
+    var file = DriveApp.getFileById(WORK_FILE_ID);
+    var want = scheduledFrom(readGrid(file, WL_SHEET));
+    var done = {};
+    try { readGrid(file, WL_ARCHIVE).forEach(function (g) { var t = g.r >= 2 && cellText(g, 1); if (t) done[t] = true; }); } catch (err) {}
+
+    var now = new Date();
+    var evs = cal.getEvents(new Date(now.getTime() - 400 * 86400000), new Date(now.getTime() + 730 * 86400000));
+    var tagged = {}, byTitle = {};
+    evs.forEach(function (ev) {
+      var k = ev.getTag(CAL_TAG);
+      if (k) (tagged[k] = tagged[k] || []).push(ev);
+      else if (ev.isAllDayEvent()) byTitle[ev.getTitle()] = byTitle[ev.getTitle()] || ev;
+    });
+    var res = { ok: true, created: 0, updated: 0, removed: 0 };
+    Object.keys(want).forEach(function (k) {
+      var w = want[k];
+      var list = tagged[k] || [];
+      var ev = list[0] || byTitle[w.title]; // 沒有對應事件時,認領手動建立的同名全天事件,避免重複
+      list.slice(1).forEach(function (x) { x.deleteEvent(); res.removed++; });
+      delete tagged[k];
+      if (!ev) {
+        ev = cal.createAllDayEvent(w.title, w.start, w.endEx);
+        ev.setTag(CAL_TAG, k);
+        ev.setColor(CalendarApp.EventColor.GREEN);
+        res.created++;
+        return;
+      }
+      var changed = false;
+      if (!ev.getTag(CAL_TAG)) { ev.setTag(CAL_TAG, k); changed = true; }
+      if (ev.getTitle() !== w.title) { ev.setTitle(w.title); changed = true; }
+      if (!ev.isAllDayEvent() || ev.getAllDayStartDate().getTime() !== w.start.getTime() || ev.getAllDayEndDate().getTime() !== w.endEx.getTime()) {
+        ev.setAllDayDates(w.start, w.endEx); changed = true;
+      }
+      if (ev.getColor() !== String(CalendarApp.EventColor.GREEN)) { ev.setColor(CalendarApp.EventColor.GREEN); changed = true; }
+      if (changed) res.updated++;
+    });
+    // 不再是「已排定」的項目:完工(已移到資料庫)保留事件,其餘移除
+    Object.keys(tagged).forEach(function (k) {
+      if (done[k]) return;
+      tagged[k].forEach(function (ev) { ev.deleteEvent(); res.removed++; });
+    });
+    Logger.log('日曆同步:新增 ' + res.created + '、更新 ' + res.updated + '、移除 ' + res.removed);
+    return res;
+  } finally { lock.releaseLock(); }
+}
+
+// List 工作表 → { 工作項目: { title, start, endEx(結束日隔天) } };只取狀態「已排定/已確定」且有開始日期的列
+function scheduledFrom(grid) {
+  var out = {};
+  grid.forEach(function (g) {
+    if (g.r < 2 || g.r > WL_MAX_ROW) return;
+    var item = cellText(g, 1), status = cellText(g, 5);
+    if (!item || (status !== '已排定' && status !== '已確定')) return;
+    var s = cellSerial(g, 2), e = cellSerial(g, 3);
+    if (s == null) return;
+    if (e == null || e < s) e = s;
+    var who = [cellText(g, 6), cellText(g, 7)].filter(Boolean).join('、');
+    out[item] = { title: who ? item + '_' + who : item, start: serialDate(s), endEx: serialDate(e + 1) };
+  });
+  return out;
+}
+function serialDate(n) {
+  var d = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }

@@ -104,6 +104,12 @@
 - 每天 08:30 檢查:追蹤/殘件事項(狀態不是 Close、改善期限已過)與專案管理未結案專案的追蹤事項(狀態不是 Close、期限已過),有逾期才寄信(依逾期天數排序的表格);手機 Gmail App 開通知即會跳出
 - 設定:Apps Script 編輯器貼上最新 `gas/Code.gs` → 儲存 → 選 `installDailyNotify` 執行一次(授權寄信);`testNotify` 可立即寄一封測試信。收件者改 `NOTIFY_TO`
 
+### 近期工作項目 → Google 日曆(Apps Script)
+- 近期工作項目每次存檔後,App 呼叫 Apps Script `?a=cal`,把狀態「已排定」的項目在「ATK」日曆建立全天事件
+  (標題 `工作項目_硬體、軟體人員`、顏色羅勒綠);日期/人員改了會更新,項目刪除或改成其他狀態時移除(完工保留)
+- 以事件標籤 `wl` 對應工作項目;手動建立的同名全天事件會被認領,不重複建立;其他事件不會動到
+- 設定:Apps Script 編輯器貼上最新 `gas/Code.gs` → 選 `syncCalendar` 執行一次(授權日曆)→ 部署新版本
+
 ### 每日 02:00 自動備份(Apps Script)
 - 備份 Project Resume.xlsx、Project Management.xlsx、Work List.xlsm、Project Schedule.json 到 Project Resume.xlsx 同資料夾的
   `專案履歷備份/yyyy-MM-dd/`;只保留最新 5 份(`BACKUP_KEEP`),每次備份後最舊的日期資料夾移到垃圾桶

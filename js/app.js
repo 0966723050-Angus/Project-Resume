@@ -2407,6 +2407,8 @@
   WorkList.init({
     h, toast, busy, dialog, confirmYes, errMsg, setTitle, isDirty, markDirty,
     myEmail, can, showView: (id, o) => showView(id, o),
+    // 存檔後由 Apps Script 把「已排定」項目同步到 Google 日曆
+    calSync: CFG.SHARE_URL ? () => gasGet({ a: 'cal' }, 1) : null,
     // obj:進入編輯時的資料(用來判斷是否有未儲存修改);null = 結束編輯
     setEditing: (obj) => { editing = obj ? { type: 'work', obj, snapshot: JSON.stringify(obj), isNew: false, uploads: [] } : null; markDirty(); },
   });

@@ -356,11 +356,20 @@
       C.setTitle('近期工作項目', statusText());
       renderList();
       C.toast('✅ 已儲存至雲端硬碟');
+      syncCalendar();
       return true;
     } catch (err) {
       C.toast(err.status === 403 ? '儲存失敗:您的帳號只有檢視權限,請聯絡檔案擁有者升級為編輯者' : '儲存失敗:' + C.errMsg(err), 6000);
       return false;
     } finally { C.busy(''); }
+  }
+
+  // 背景同步,不擋存檔流程;有變動才提示
+  function syncCalendar() {
+    if (!C.calSync) return;
+    C.calSync()
+      .then((r) => { if (r.created || r.updated || r.removed) C.toast(`📅 Google 日曆已同步:新增 ${r.created}・更新 ${r.updated}・移除 ${r.removed}`, 4000); })
+      .catch((err) => C.toast('Google 日曆同步失敗:' + C.errMsg(err), 6000));
   }
 
   // ---------- 甘特圖 ----------
