@@ -154,12 +154,14 @@
   function applyPerms() {
     $('navSettings').hidden = !can('settings');
     $('navPm').hidden = !can('pmView');
+    $('addRemain').hidden = !can('remain');
     document.body.classList.toggle('pm-ro', !can('pmEdit'));
   }
   function pmLock() {
     if (can('pmEdit')) return;
     for (const el of document.querySelectorAll('#pmFields :is(input, select, textarea, button), #pmTracks :is(input, select, textarea, button), #pmClosedBox :is(input, select, textarea, button), #schedHead :is(input, select, textarea, button), #schedItems :is(input, select, textarea, button)')) el.disabled = true;
   }
+  const canEditRemain = () => can('remain'); // 殘件/追蹤事項:依「設定 → 權限」,不再看填表人
   const canEdit = (rec) => isAdmin() || (!!rec.authorEmail && String(rec.authorEmail).toLowerCase() === myEmail());
   const authorLine = (rec) => '填表人:' + (rec.author || '(未記錄)');
   function markDirty() { $('saveBtn').classList.toggle('dirty', isDirty()); }
@@ -1271,7 +1273,7 @@
     if (!chosen) { $('remainEmpty').hidden = true; $('remainCount').textContent = ''; return; }
     for (const r of items) {
       const st = r.status || 'Open';
-      box.append(h('a', { class: 'card' + (st === 'Close' ? ' closed' : '') + (canEdit(r) ? '' : ' readonly'), href: '#/remain/' + encodeURIComponent(r.id) },
+      box.append(h('a', { class: 'card' + (st === 'Close' ? ' closed' : '') + (canEditRemain() ? '' : ' readonly'), href: '#/remain/' + encodeURIComponent(r.id) },
         h('div', { class: 'card-top' },
           h('span', { class: 'status st-' + st.toLowerCase() }, st),
           h('span', { class: 'date' }, fmtDate(r.date)),
@@ -1283,7 +1285,7 @@
           r.owner ? h('span', {}, '👤 ' + r.owner) : null,
           r.dept ? h('span', {}, r.dept) : null,
           r.due ? h('span', { class: isOverdue(r) ? 'overdue' : '' }, '期限 ' + fmtDate(r.due) + (isOverdue(r) ? '(逾期)' : '')) : null,
-          r.author ? h('span', { class: 'author' }, (canEdit(r) ? '' : '🔒 ') + '填表 ' + r.author) : null)));
+          r.author ? h('span', { class: 'author' }, (canEditRemain() ? '' : '🔒 ') + '填表 ' + r.author) : null)));
     }
     $('remainEmpty').hidden = items.length > 0;
     const open = items.filter((r) => (r.status || 'Open') !== 'Close').length;
@@ -1405,6 +1407,7 @@
   }
   function openRemain(id, p) {
     let obj, isNew = false;
+    if (id === 'new' && !canEditRemain()) { toast('沒有殘件/追蹤事項的編輯權限'); replaceHash('#/remain' + (p ? '?p=' + encodeURIComponent(p) : '')); showRemainList(p); return; }
     if (id === 'new') {
       isNew = true;
       const proj = p ? projList().find((x) => x.code === p) || S.data.remains.find((x) => x.code === p) : null;
@@ -1412,7 +1415,7 @@
     } else {
       const r = S.data.remains.find((x) => x.id === id);
       if (!r) { toast('找不到此殘件項目(可能已被刪除,或請重新載入)', 4000); replaceHash('#/remain'); showRemainList(); return; }
-      if (!canEdit(r)) { viewRemain(r); return; }
+      if (!canEditRemain()) { viewRemain(r); return; }
       obj = clone(r);
     }
     editing = { type: 'remain', obj, snapshot: JSON.stringify(obj), isNew, uploads: [] };
@@ -1479,7 +1482,7 @@
         const L = d.choice.lists;
         if (!(L.dept || []).includes('技術')) { L.dept = withTech(L.dept || []); d.changed.add('choice'); } // 權責區分清單補「技術」
         const i = d.remains.findIndex((r) => r.id === rec.id);
-        if (i >= 0 && !canEdit(d.remains[i])) throw new Error('只有填表人或管理者可以修改這筆殘件');
+        if (!canEditRemain()) throw new Error('沒有殘件/追蹤事項的編輯權限');
         if (i >= 0) d.remains[i] = rec;
         else if (editing.isNew) d.remains.push(rec);
         else throw new Error('雲端上的這筆殘件已被刪除或在 Excel 中被修改,無法對應;請重新載入後再編輯');
@@ -1506,7 +1509,7 @@
     try {
       await commit('刪除殘件項目…', (d) => {
         const old = d.remains.find((r) => r.id === obj.id);
-        if (old && !canEdit(old)) throw new Error('只有填表人或管理者可以刪除');
+        if (!canEditRemain()) throw new Error('沒有殘件/追蹤事項的編輯權限');
         d.remains = d.remains.filter((r) => r.id !== obj.id);
         d.changed.add('remain');
       });
