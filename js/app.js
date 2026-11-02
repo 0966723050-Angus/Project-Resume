@@ -2451,7 +2451,8 @@
     const total = rows.reduce((t, r) => t + r.hours, 0);
     $('hsCount').textContent = rows.length ? `${mon.replace('-', '/')} 共 ${new Set(rows.map((r) => r.name)).size} 人、${new Set(rows.map((r) => r.code)).size} 個作業項目,合計 ${fmtH(total)} 小時` : '';
     $('hsEmpty').hidden = !!rows.length;
-    $('hsExport').disabled = !rows.length;
+    $('hsExport').disabled = $('hsErp').disabled = !rows.length;
+    renderErpDir();
     const box = $('hsTable');
     box.innerHTML = '';
     if (!rows.length) return;
@@ -2475,6 +2476,70 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
     toast('已匯出 ' + name);
   }
+  // ---- ERP 工時:全公司人員(有員工代號)× 專案 × 費用歸屬 → ERP-WT.xlsx,寫入設定的資料夾 ----
+  // 資料夾用瀏覽器的 File System Access(電腦版 Chrome/Edge);資料夾記在本機 IndexedDB,每台電腦各自設定
+  const ERP_FILE = 'ERP-WT.xlsx';
+  const canPickDir = 'showDirectoryPicker' in window;
+  function kv(mode, fn) {
+    return new Promise((res, rej) => {
+      const o = indexedDB.open('pr-local', 1);
+      o.onupgradeneeded = () => o.result.createObjectStore('kv');
+      o.onerror = () => rej(o.error);
+      o.onsuccess = () => {
+        const tx = o.result.transaction('kv', mode), req = fn(tx.objectStore('kv'));
+        tx.oncomplete = () => res(req.result);
+        tx.onerror = () => rej(tx.error);
+      };
+    });
+  }
+  const getErpDir = () => kv('readonly', (st) => st.get('erpDir')).catch(() => null);
+  async function renderErpDir() {
+    const box = $('hsErpDir');
+    box.innerHTML = '';
+    if (!canPickDir) { box.append('ERP工時:此瀏覽器無法指定資料夾,將以下載方式匯出 ' + ERP_FILE); return; }
+    const dir = await getErpDir();
+    box.append('ERP工時儲存資料夾:', h('b', {}, dir ? dir.name : '(尚未設定)'), ' ',
+      h('button', { type: 'button', class: 'link-btn', onclick: () => pickErpDir().catch(() => {}) }, dir ? '變更' : '設定'));
+  }
+  async function pickErpDir() {
+    const dir = await showDirectoryPicker({ id: 'erp-wt', mode: 'readwrite' });
+    await kv('readwrite', (st) => st.put(dir, 'erpDir'));
+    renderErpDir();
+    return dir;
+  }
+  function erpRows(mon) {
+    const m = new Map();
+    for (const r of hourStats(mon)) {
+      if (!r.fee || !r.empNo) continue; // 一般(無費用歸屬)與不在公司人員/無員工代號者不列入
+      const k = [r.code, r.fee, r.empNo].join('');
+      const x = m.get(k) || { code: r.code, fee: r.fee, name: r.name, empNo: r.empNo, hours: 0 };
+      x.hours += r.hours;
+      m.set(k, x);
+    }
+    return [...m.values()].filter((x) => x.hours > 0).sort((a, b) => a.code.localeCompare(b.code) || b.fee - a.fee || a.empNo.localeCompare(b.empNo));
+  }
+  async function exportErp() {
+    const mon = $('hsMonth').value;
+    const rows = erpRows(mon);
+    if (!rows.length) return toast('這個月份沒有可匯出的 ERP 工時(需有員工代號,且報工類別為設計/工程)', 4500);
+    const skipped = hourStats(mon).filter((r) => !r.fee || !r.empNo).length;
+    const note = skipped ? `(${skipped} 筆一般或無員工代號者未列入)` : '';
+    const bytes = Exporter.erp(rows, mon + '-01');
+    if (!canPickDir) return saveXlsx(bytes, ERP_FILE);
+    try {
+      let dir = await getErpDir();
+      if (!dir) dir = await pickErpDir();
+      if ((await dir.queryPermission({ mode: 'readwrite' })) !== 'granted' && (await dir.requestPermission({ mode: 'readwrite' })) !== 'granted') return toast('未取得資料夾寫入權限');
+      const w = await (await dir.getFileHandle(ERP_FILE, { create: true })).createWritable();
+      await w.write(bytes);
+      await w.close();
+      toast(`✅ 已匯出 ${rows.length} 筆到「${dir.name}」資料夾的 ${ERP_FILE}${note}`, 5000);
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      toast('ERP工時匯出失敗:' + (e.name === 'NoModificationAllowedError' || e.name === 'InvalidStateError' ? '檔案可能正在 Excel 中開啟,請先關閉' : errMsg(e)), 6000);
+    }
+  }
+  $('hsErp').onclick = exportErp;
   $('hrStatsBtn').onclick = askStatsMonth;
   $('hsMonth').onchange = () => { if ($('hsMonth').value) replaceHash('#/hours/stats?m=' + $('hsMonth').value); showHourStats($('hsMonth').value); };
   $('hsExport').onclick = () => {
@@ -2490,7 +2555,12 @@
   $('hrAddEntry').onclick = () => {
     const last = hrEntries[hrEntries.length - 1];
     const en = newEntry();
-    if (last) { en.start = last.end || ''; en.cat = last.cat; } // 下一筆預設接續上一筆的結束時間與類別
+    // 下一筆沿用上一筆的類別;上一筆在下班(17:30)前結束時,接續其結束時間到當天 17:30,否則用預設時間
+    if (last) {
+      en.cat = last.cat;
+      const end = String(last.end || '');
+      if (end && end.slice(11, 16) < '17:30') { en.start = end; en.end = end.slice(0, 10) + 'T17:30'; en.hours = Hours.diffHours(en.start, en.end) ?? ''; }
+    }
     hrEntries.push(en);
     renderHourForm($('hrNameInput').value);
   };

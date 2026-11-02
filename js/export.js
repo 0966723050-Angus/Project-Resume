@@ -73,13 +73,18 @@
 <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
 <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
 </cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+    return zip(sheet, styles, sheetName, `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${escXml(sheetName)}'!$A$2:$${last}$${lastRow}</definedName></definedNames>`);
+  }
+
+  // 單一工作表 + styles 打包成 xlsx
+  function zip(sheet, styles, sheetName, definedNames = '') {
     const files = {
       '[Content_Types].xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`,
       '_rels/.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
       'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${escXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${escXml(sheetName)}'!$A$2:$${last}$${lastRow}</definedName></definedNames></workbook>`,
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${escXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets>${definedNames}</workbook>`,
       'xl/_rels/workbook.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
       'xl/worksheets/sheet1.xml': sheet,
@@ -108,5 +113,40 @@
     return pack(rows, cols.map((c) => c.w), items.length, sheetName || 'Sheet1');
   }
 
-  window.Exporter = { build, table };
+  // ERP 工時匯入檔(ERP-WT.xlsx):第 1 列表頭,無標題列;程式代碼與日期只填第一筆
+  // rows = [{ code, fee, name, empNo, hours }];date = 'yyyy-mm-dd'
+  const ERP_COLS = [['程式代碼', 'c'], ['日期', 'd'], ['專案代號', 'c'], ['費用歸屬', 'n'], ['姓名', 'c'], ['員工代號', 'c'], ['工時', 'n']];
+  function erp(rows, date, progCode = 'PJTI03') {
+    let xml = '<row r="1" ht="24" customHeight="1">' + ERP_COLS.map(([t], i) => `<c r="${idxToCol(i + 1)}1" s="1" t="inlineStr"><is><t>${escXml(t)}</t></is></c>`).join('') + '</row>';
+    rows.forEach((x, n) => {
+      const r = n + 2;
+      const vals = [n ? '' : progCode, n ? '' : date, x.code, x.fee, x.name, x.empNo, Math.round(x.hours * 10) / 10];
+      xml += `<row r="${r}" ht="20" customHeight="1">` + ERP_COLS.map(([, kind], i) => {
+        const ref = idxToCol(i + 1) + r, v = vals[i] ?? '';
+        if (v === '') return '';
+        if (kind === 'd') return `<c r="${ref}" s="3"><v>${serial(v)}</v></c>`;
+        if (kind === 'n' && Number.isFinite(Number(v))) return `<c r="${ref}" s="2"><v>${Number(v)}</v></c>`;
+        return `<c r="${ref}" s="2" t="inlineStr"><is><t xml:space="preserve">${escXml(v)}</t></is></c>`;
+      }).join('') + '</row>';
+    });
+    const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:G${rows.length + 1}"/>
+<sheetFormatPr defaultRowHeight="20"/><cols>${ERP_COLS.map((_, i) => `<col min="${i + 1}" max="${i + 1}" width="16" customWidth="1"/>`).join('')}</cols><sheetData>${xml}</sheetData></worksheet>`;
+    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="1"><numFmt numFmtId="176" formatCode="yyyy/mm/dd"/></numFmts>
+<fonts count="2"><font><sz val="12"/><name val="新細明體"/><family val="1"/><charset val="136"/></font><font><b/><sz val="14"/><name val="新細明體"/><family val="1"/><charset val="136"/></font></fonts>
+<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="4">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="176" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+    return zip(sheet, styles, 'Sheet1');
+  }
+
+  window.Exporter = { build, table, erp };
 })();
