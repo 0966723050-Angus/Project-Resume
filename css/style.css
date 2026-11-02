@@ -583,6 +583,7 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
 .hr-entry-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: var(--primary); }
 #hrAddEntry { margin-top: 12px; }
 .hr-save-row { justify-content: flex-end; margin-top: 12px; }
+#hrClear { margin-right: auto; }
 .hr-list-title { font-size: 15px; margin: 18px 2px 8px; color: var(--primary); }
 .hr-card .card-foot { align-items: center; }
 .hr-hours { color: var(--text); font-size: 14px; }

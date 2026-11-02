@@ -2581,6 +2581,8 @@
   };
   $('hrSave').onclick = saveHours;
   $('hrCancel').onclick = () => resetHourForm();
+  // 清除:所有工時紀錄回到預設(只留一筆、時間 08:30~17:30),姓名與修改中的狀態保留
+  $('hrClear').onclick = () => { hrEntries = [newEntry()]; renderHourForm($('hrNameInput').value); };
 
   // ---------- 設定 ----------
   function showSettings() {
