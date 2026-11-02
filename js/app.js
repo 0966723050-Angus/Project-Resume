@@ -2493,13 +2493,26 @@
     });
   }
   const getErpDir = () => kv('readonly', (st) => st.get('erpDir')).catch(() => null);
+  // 「ERP工時匯出路徑」方塊(統計頁與設定頁):預設好資料夾後,按「ERP工時」即一鍵寫入,不再詢問
   async function renderErpDir() {
-    const box = $('hsErpDir');
-    box.innerHTML = '';
-    if (!canPickDir) { box.append('ERP工時:此瀏覽器無法指定資料夾,將以下載方式匯出 ' + ERP_FILE); return; }
-    const dir = await getErpDir();
-    box.append('ERP工時儲存資料夾:', h('b', {}, dir ? dir.name : '(尚未設定)'), ' ',
-      h('button', { type: 'button', class: 'link-btn', onclick: () => pickErpDir().catch(() => {}) }, dir ? '變更' : '設定'));
+    const dir = canPickDir ? await getErpDir() : null;
+    const perm = dir ? await dir.queryPermission({ mode: 'readwrite' }).catch(() => 'prompt') : '';
+    for (const id of ['hsErpDir', 'erpDirBox']) {
+      const box = $(id);
+      if (!box) continue;
+      box.innerHTML = '';
+      if (id === 'erpDirBox' && !can('hoursAll')) continue;
+      const path = h('input', { type: 'text', readonly: true, class: 'erp-path', 'aria-label': 'ERP工時匯出路徑', placeholder: '尚未設定匯出路徑' });
+      path.value = dir ? `${dir.name}\\${ERP_FILE}` : '';
+      const pick = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => pickErpDir().catch(() => {}) }, dir ? '📁 變更' : '📁 選擇資料夾');
+      const clear = dir ? h('button', { type: 'button', class: 'btn btn-danger-ghost btn-sm', onclick: async () => { await kv('readwrite', (st) => st.delete('erpDir')); renderErpDir(); } }, '清除') : null;
+      const hint = !canPickDir ? '此瀏覽器無法預設資料夾(請用電腦版 Chrome 或 Edge),按「ERP工時」會改為下載 ' + ERP_FILE
+        : !dir ? '請先選擇 ERP 匯入用的資料夾;之後按「🏭 ERP工時」就會直接寫入(覆寫)該資料夾的 ' + ERP_FILE
+          : perm === 'granted' ? '✅ 已預設,按「🏭 ERP工時」即一鍵匯出(覆寫同名檔案)'
+            : '已預設;瀏覽器重新開啟後第一次匯出會再詢問一次寫入權限(可選「每次造訪都允許」)';
+      box.append(h('div', { class: 'panel erp-dir' }, h('div', { class: 'panel-title' }, 'ERP工時匯出路徑'),
+        canPickDir ? h('div', { class: 'erp-path-row' }, path, pick, clear) : null, h('small', { class: 'hint' }, hint)));
+    }
   }
   async function pickErpDir() {
     const dir = await showDirectoryPicker({ id: 'erp-wt', mode: 'readwrite' });
@@ -2534,6 +2547,7 @@
       await w.write(bytes);
       await w.close();
       toast(`✅ 已匯出 ${rows.length} 筆到「${dir.name}」資料夾的 ${ERP_FILE}${note}`, 5000);
+      renderErpDir();
     } catch (e) {
       if (e.name === 'AbortError') return;
       toast('ERP工時匯出失敗:' + (e.name === 'NoModificationAllowedError' || e.name === 'InvalidStateError' ? '檔案可能正在 Excel 中開啟,請先關閉' : errMsg(e)), 6000);
@@ -2581,6 +2595,7 @@
       h('div', { class: 'hint' }, `檔案 ID(供分享連結 Apps Script 的 FILE_ID):${S.fileId || ''}`),
       h('div', { class: 'hint' }, CFG.SHARE_URL ? '分享連結:免登入檢視已啟用' : '分享連結:尚未設定 SHARE_URL,開啟連結需登入'));
     renderListEditors();
+    renderErpDir();
     renderStaffEditor();
     renderPermEditor();
   }

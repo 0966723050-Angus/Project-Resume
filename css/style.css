@@ -614,5 +614,8 @@ button.hr-total:disabled { cursor: default; }
 .hr-detail tfoot td { font-weight: 700; border-bottom: 0; }
 @media (max-width: 480px) { .hr-detail { font-size: 13px; } .hr-detail th, .hr-detail td { padding: 6px 4px; } }
 #hsErp { flex: none; min-height: 44px; }
-.hs-erp-dir { margin: 0 2px 8px; }
-.hs-erp-dir b { margin: 0 4px; }
+/* ERP工時匯出路徑 */
+.erp-dir .panel-title { margin-bottom: 8px; }
+.erp-path-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.erp-path { flex: 1 1 200px; min-width: 0; min-height: 40px; border: 1px solid var(--border); border-radius: 10px; padding: 6px 12px; font-size: 15px; background: var(--surface-2); color: var(--text); }
+.erp-path-row .btn { flex: none; min-height: 40px; }
