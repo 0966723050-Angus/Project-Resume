@@ -2310,12 +2310,24 @@
     const note = h('textarea', { rows: 2 });
     note.value = en.note || '';
     note.oninput = () => { en.note = note.value; autoGrow(note); };
+    // 結束日期預設與開始日期相同:改開始日期時,結束日期空白、早於開始或原本同一天就跟著改
+    let prevDay = String(en.start || '').slice(0, 10);
+    const endF = fDateTime('結束時間', en, 'end', recalc, '17:30');
+    const startF = fDateTime('開始時間', en, 'start', (v) => {
+      const day = String(v || '').slice(0, 10), endDay = String(en.end || '').slice(0, 10);
+      if (day && (!endDay || endDay < day || endDay === prevDay)) {
+        const ed = endF.querySelector('.dt-date');
+        ed.value = day;
+        ed.dispatchEvent(new Event('change'));
+      }
+      prevDay = day;
+      recalc();
+    }, '08:30');
     const head = h('div', { class: 'hr-entry-head' }, h('b', {}, hrEdit ? '工時紀錄' : `工時紀錄 ${i + 1}`),
       hrEntries.length > 1 ? h('button', { type: 'button', class: 'del-btn', 'aria-label': '移除這筆', onclick: () => { hrEntries.splice(i, 1); renderHourForm($('hrNameInput').value); } }, '✕') : null);
     return h('div', { class: 'hr-entry' }, head, h('div', { class: 'fields' },
       field('作業項目', projSel), field('報工類別', catSel),
-      fDateTime('開始時間', en, 'start', recalc, '08:30'),
-      fDateTime('結束時間', en, 'end', recalc, '17:30'),
+      startF, endF,
       field('報工總時數', hrs, h('small', { class: 'hint' }, '依開始/結束時間自動計算(扣除 12:00~13:00 午休),可手動修改')),
       field('備註說明', note)));
   }
