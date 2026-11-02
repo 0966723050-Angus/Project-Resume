@@ -2523,13 +2523,14 @@
   function erpRows(mon) {
     const m = new Map();
     for (const r of hourStats(mon)) {
-      if (!r.fee || !r.empNo) continue; // 一般(無費用歸屬)與不在公司人員/無員工代號者不列入
+      if (![1, 2].includes(r.fee) || !r.empNo) continue; // 只匯出費用歸屬 1(設計)、2(工程);無員工代號者不列入
       const k = [r.code, r.fee, r.empNo].join('');
       const x = m.get(k) || { code: r.code, fee: r.fee, name: r.name, empNo: r.empNo, hours: 0 };
       x.hours += r.hours;
       m.set(k, x);
     }
-    return [...m.values()].filter((x) => x.hours > 0).sort((a, b) => a.code.localeCompare(b.code) || b.fee - a.fee || a.empNo.localeCompare(b.empNo));
+    // 排序:專案代號(C 欄)為主、費用歸屬為次、員工代號
+    return [...m.values()].filter((x) => x.hours > 0).sort((a, b) => a.code.localeCompare(b.code) || a.fee - b.fee || a.empNo.localeCompare(b.empNo));
   }
   async function exportErp() {
     const mon = $('hsMonth').value;
