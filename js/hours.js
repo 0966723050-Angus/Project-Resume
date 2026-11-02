@@ -69,11 +69,14 @@
     if (isNew) for (const p of ['xl/workbook.xml', 'xl/_rels/workbook.xml.rels', '[Content_Types].xml']) { delete book.docs[p]; book.touched.delete(p); }
   }
 
-  // 兩個時間相差幾小時(取到 0.5 小時);缺值回傳 null
+  // 兩個時間相差幾小時,扣除每天 12:00~13:00 午休中重疊的部分(取到 0.5 小時);缺值回傳 null
+  const LUNCH = [12 / 24, 13 / 24];
   function diffHours(start, end) {
     const s = Store.dtToSerial(start), e = Store.dtToSerial(end);
     if (s == null || e == null || e <= s) return null;
-    return Math.round((e - s) * 24 * 2) / 2;
+    let d = e - s;
+    for (let day = Math.floor(s); day <= Math.floor(e); day++) d -= Math.max(0, Math.min(e, day + LUNCH[1]) - Math.max(s, day + LUNCH[0]));
+    return Math.round(d * 24 * 2) / 2;
   }
 
   window.Hours = { SHEET, FIELDS, CATS, read, write, diffHours };
