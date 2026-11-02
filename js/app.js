@@ -2394,19 +2394,24 @@
   // ---- 統計(全員) ----
   const HR_STAT_COLS = [
     { title: '專案代號', w: 14, kind: 'c' }, { title: '專案名稱', w: 34, kind: 'w' }, { title: '報工類別', w: 10, kind: 'c' },
-    { title: '部門', w: 12, kind: 'c' }, { title: '姓名', w: 12, kind: 'c' }, { title: '工時', w: 10, kind: 'n' },
+    { title: '費用歸屬', w: 10, kind: 'n' }, { title: '部門', w: 12, kind: 'c' }, { title: '員工代號', w: 12, kind: 'c' },
+    { title: '姓名', w: 12, kind: 'c' }, { title: '工時', w: 10, kind: 'n' },
   ];
+  // 費用歸屬:設計 = 1、工程 = 2(一般不填)
+  const feeOf = (cat) => ({ 設計: 1, 工程: 2 })[cat] || '';
   function hourStats(mon) {
     const staff = staffList();
-    const deptOf = (r) => {
-      const st = staff.find((x) => x.name === r.name || (r.email && x.email && x.email.toLowerCase() === r.email));
-      return st ? st.dept || '' : '外包';
-    };
+    const staffOf = (r) => staff.find((x) => x.name === r.name || (r.email && x.email && x.email.toLowerCase() === r.email));
     const m = new Map();
     for (const r of hoursList()) {
       if (!String(r.start || '').startsWith(mon)) continue;
       const k = [r.code, r.cat, r.name].join('\u0001');
-      const x = m.get(k) || { code: r.code || '', pname: r.pname || (hourProj(r.code) || {}).name || '', cat: r.cat || '', dept: deptOf(r), name: r.name || '', hours: 0 };
+      let x = m.get(k);
+      if (!x) {
+        const st = staffOf(r);
+        x = { code: r.code || '', pname: r.pname || (hourProj(r.code) || {}).name || '', cat: r.cat || '', fee: feeOf(r.cat),
+          dept: st ? st.dept || '' : '外包', empNo: st ? st.empNo || '' : '', name: r.name || '', hours: 0 };
+      }
       x.hours += Number(r.hours) || 0;
       m.set(k, x);
     }
@@ -2434,10 +2439,11 @@
     box.innerHTML = '';
     if (!rows.length) return;
     box.append(h('table', { class: 'hr-table hs-table' },
-      // 畫面上專案代號與名稱合併一欄(手機不需左右捲動);匯出仍分開
-      h('thead', {}, h('tr', {}, h('th', {}, '專案代號 / 名稱'), h('th', {}, '報工類別'), h('th', {}, '部門'), h('th', {}, '姓名'), h('th', { class: 'num' }, '工時'))),
-      h('tbody', {}, ...rows.map((r) => h('tr', {}, h('td', {}, h('b', {}, r.code), r.pname ? h('small', {}, r.pname) : ''), h('td', {}, r.cat),
-        h('td', { class: r.dept === '外包' ? 'hs-out' : '' }, r.dept), h('td', {}, r.name), h('td', { class: 'num' }, fmtH(r.hours))))),
+      // 畫面上 代號/名稱、類別/費用歸屬、姓名/員工代號 各合併一欄(手機不需左右捲動);匯出仍分開
+      h('thead', {}, h('tr', {}, h('th', {}, '專案代號 / 名稱'), h('th', {}, '類別/歸屬'), h('th', {}, '部門'), h('th', {}, '姓名/代號'), h('th', { class: 'num' }, '工時'))),
+      h('tbody', {}, ...rows.map((r) => h('tr', {}, h('td', {}, h('b', {}, r.code), r.pname ? h('small', {}, r.pname) : ''),
+        h('td', {}, r.cat, r.fee ? h('small', {}, '歸屬 ' + r.fee) : ''),
+        h('td', { class: r.dept === '外包' ? 'hs-out' : '' }, r.dept), h('td', {}, r.name, r.empNo ? h('small', {}, r.empNo) : ''), h('td', { class: 'num' }, fmtH(r.hours))))),
       h('tfoot', {}, h('tr', {}, h('td', { colspan: '4' }, '合計'), h('td', { class: 'num' }, fmtH(total))))));
   }
   async function saveXlsx(bytes, name) {
@@ -2459,7 +2465,7 @@
     const rows = hourStats(mon);
     if (!rows.length) return toast('這個月份沒有工時紀錄');
     const total = rows.reduce((t, r) => t + r.hours, 0);
-    const data = [...rows.map((r) => [r.code, r.pname, r.cat, r.dept, r.name, Math.round(r.hours * 10) / 10]), ['合計', '', '', '', '', Math.round(total * 10) / 10]];
+    const data = [...rows.map((r) => [r.code, r.pname, r.cat, r.fee, r.dept, r.empNo, r.name, Math.round(r.hours * 10) / 10]), ['合計', '', '', '', '', '', '', Math.round(total * 10) / 10]];
     saveXlsx(Exporter.table(HR_STAT_COLS, data, `${mon.replace('-', '/')} 工時統計`, mon + ' 工時統計'), `工時統計_${mon.replace('-', '')}.xlsx`);
   };
   $('hrMonth').onchange = () => { ssSet(HR_LS_MONTH, $('hrMonth').value); renderHours(); };
