@@ -105,7 +105,7 @@
 - 設定:Apps Script 編輯器貼上最新 `gas/Code.gs` → 儲存 → 選 `installDailyNotify` 執行一次(授權寄信);`testNotify` 可立即寄一封測試信。收件者改 `NOTIFY_TO`
 
 ### 公司人員(設定頁)
-- 設定 → 公司人員:姓名 / 部門 / E-Mail,可新增與刪除;存在 Project Resume.xlsx「公司人員」工作表(依表頭對應欄位)
+- 設定 → 公司人員:姓名 / 英文姓名 / 部門 / E-Mail,可新增、編輯(✏️)與刪除;權限名單依 E-Mail 對應顯示人名;存在 Project Resume.xlsx「公司人員」工作表(依表頭對應欄位)
 
 ### 近期工作項目 → Google 日曆(Apps Script)
 - 近期工作項目每次存檔後,App 呼叫 Apps Script `?a=cal`,把狀態「已排定」的項目在「ATK」日曆建立全天事件

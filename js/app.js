@@ -2246,7 +2246,8 @@
         ul, h('div', { class: 'add-row' + (L.key === 'project' ? ' two' : '') }, ...inputs, addBtn)));
     }
   }
-  // 公司人員:姓名/部門/E-Mail(存在 Excel「公司人員」工作表),可新增與刪除;只重畫面板內容,保持展開
+  // 公司人員:姓名/英文姓名/部門/E-Mail(存在 Excel「公司人員」工作表),可新增、編輯與刪除;只重畫面板內容,保持展開
+  const staffList = () => (S.data ? Staff.read(S.data.book) : []);
   function renderStaffEditor() {
     const box = $('staffEditor');
     box.innerHTML = '';
@@ -2254,32 +2255,71 @@
     const body = h('div', {});
     const panel = h('details', { class: 'panel list-panel' }, h('summary', { class: 'panel-title' }, '公司人員', count), body);
     const save = (label, fn) => commit(label, (d) => { const list = Staff.read(d.book); fn(list); Staff.write(d.book, list); });
+    const same = (p) => (x) => Staff.FIELDS.every((f) => x[f.key] === p[f.key]);
+    let editing = null; // 編輯中的那一筆(原始值)
+    // 輸入欄位組;回傳 { els, value() };value() 驗證失敗時回傳 null
+    const inputsFor = (p, others) => {
+      const els = Staff.FIELDS.map((f) => {
+        const el = h('input', { type: f.key === 'email' ? 'email' : 'text', placeholder: f.label });
+        el.value = (p && p[f.key]) || '';
+        return el;
+      });
+      const value = () => {
+        const v = Object.fromEntries(Staff.FIELDS.map((f, i) => [f.key, els[i].value.trim()]));
+        v.email = v.email.toLowerCase();
+        if (!v.name) return toast('請輸入姓名'), null;
+        if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) return toast('E-Mail 格式不正確'), null;
+        if (v.email && others.some((x) => x.email.toLowerCase() === v.email)) return toast('已有相同 E-Mail 的人員'), null;
+        return v;
+      };
+      return { els, value };
+    };
     const draw = () => {
-      const people = S.data ? Staff.read(S.data.book) : [];
+      const people = staffList();
       count.textContent = String(people.length);
-      const [ni, di, ei] = [h('input', { type: 'text', placeholder: '姓名' }), h('input', { type: 'text', placeholder: '部門' }), h('input', { type: 'email', placeholder: 'E-Mail' })];
-      body.innerHTML = '';
-      body.append(
-        h('div', { class: 'list-items' }, ...(people.length ? people.map((p) => h('div', { class: 'list-item staff-item' },
-          h('span', {}, h('b', {}, p.name || '(未填姓名)'), p.dept ? h('small', {}, p.dept) : '', p.email ? h('span', { class: 'staff-mail' }, p.email) : ''),
+      const row = (p) => {
+        if (editing && same(editing)(p)) {
+          const f = inputsFor(p, people.filter((x) => !same(p)(x)));
+          return h('div', { class: 'list-item staff-item staff-editing' },
+            h('div', { class: 'staff-form' }, ...f.els, h('div', { class: 'staff-btns' },
+              h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { editing = null; draw(); } }, '取消'),
+              h('button', {
+                type: 'button', class: 'btn btn-primary btn-sm', onclick: async () => {
+                  const v = f.value();
+                  if (!v) return;
+                  try { await save('儲存人員…', (list) => { const i = list.findIndex(same(p)); if (i >= 0) list[i] = v; else list.push(v); }); toast('已儲存'); } catch (err) { return toast('儲存失敗:' + errMsg(err), 5000); }
+                  editing = null;
+                  draw();
+                  renderPermEditor();
+                },
+              }, '儲存'))));
+        }
+        return h('div', { class: 'list-item staff-item' },
+          h('span', {}, h('b', {}, p.name || '(未填姓名)'), p.ename ? h('small', {}, p.ename) : '', p.dept ? h('small', {}, p.dept) : '',
+            p.email ? h('span', { class: 'staff-mail' }, p.email) : ''),
+          h('button', { type: 'button', class: 'del-btn', 'aria-label': '編輯', onclick: () => { editing = p; draw(); } }, '✏️'),
           h('button', {
             type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: async () => {
               if (!(await confirmYes('刪除人員', `確定刪除「${[p.name, p.dept].filter(Boolean).join(' / ')}」?`, '刪除', 'btn-danger'))) return;
-              const same = (x) => x.name === p.name && x.dept === p.dept && x.email === p.email;
-              try { await save('刪除人員…', (list) => { const i = list.findIndex(same); if (i >= 0) list.splice(i, 1); }); toast('已刪除'); } catch (err) { toast('刪除失敗:' + errMsg(err), 5000); }
+              try { await save('刪除人員…', (list) => { const i = list.findIndex(same(p)); if (i >= 0) list.splice(i, 1); }); toast('已刪除'); } catch (err) { toast('刪除失敗:' + errMsg(err), 5000); }
               draw();
+              renderPermEditor();
             },
-          }, '🗑'))) : [h('div', { class: 'empty small' }, '尚無人員')])),
-        h('div', { class: 'add-row staff-add' }, ni, di, ei, h('button', {
+          }, '🗑'));
+      };
+      const add = inputsFor(null, people);
+      body.innerHTML = '';
+      body.append(
+        h('div', { class: 'list-items' }, ...(people.length ? people.map(row) : [h('div', { class: 'empty small' }, '尚無人員')])),
+        h('div', { class: 'staff-form staff-new' }, ...add.els, h('div', { class: 'staff-btns' }, h('button', {
           type: 'button', class: 'btn btn-primary btn-sm', onclick: async () => {
-            const p = { name: ni.value.trim(), dept: di.value.trim(), email: ei.value.trim().toLowerCase() };
-            if (!p.name) return toast('請輸入姓名');
-            if (p.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) return toast('E-Mail 格式不正確');
-            if (p.email && people.some((x) => x.email.toLowerCase() === p.email)) return toast('已有相同 E-Mail 的人員');
-            try { await save('新增人員…', (list) => { list.push(p); }); toast('已新增'); } catch (err) { return toast('新增失敗:' + errMsg(err), 5000); }
+            const v = add.value();
+            if (!v) return;
+            try { await save('新增人員…', (list) => { list.push(v); }); toast('已新增'); } catch (err) { return toast('新增失敗:' + errMsg(err), 5000); }
             draw();
+            renderPermEditor();
           },
-        }, '＋ 加入')));
+        }, '＋ 加入'))));
     };
     draw();
     box.append(panel);
@@ -2313,7 +2353,8 @@
           return h('label', { class: 'perm-cb' }, cb, k.label);
         });
         return h('div', { class: 'list-item perm-row' },
-          h('div', { class: 'perm-who' }, p.email, h('small', {}, admin ? '管理者' : p.role ? ROLE_LABELS[p.role] || p.role : '不在目前共用名單')),
+          h('div', { class: 'perm-who' }, h('b', {}, p.who.name || p.email), p.who.ename ? h('span', { class: 'perm-ename' }, p.who.ename) : '',
+            h('small', {}, [p.who.name ? p.email : '', admin ? '管理者' : p.role ? ROLE_LABELS[p.role] || p.role : '不在目前共用名單'].filter(Boolean).join('・'))),
           h('div', { class: 'perm-cbs' }, ...boxes));
       })), h('div', { class: 'btn-row perm-save' }, h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: savePerms }, '儲存權限')));
     };
@@ -2348,7 +2389,11 @@
       }
       for (const p of saved || []) byEmail.set(p.email, { ...(byEmail.get(p.email) || { email: p.email, role: '' }), ...p });
       for (const e of legacy) { const cur = byEmail.get(e) || { email: e, role: '' }; cur.work = true; byEmail.set(e, cur); }
-      draft = [...byEmail.values()].sort((a, b) => rank(a.role) - rank(b.role) || a.email.localeCompare(b.email));
+      // 以公司人員名單顯示人名;有 E-Mail 的公司人員也一併列出
+      const staff = new Map(staffList().filter((x) => x.email).map((x) => [x.email.toLowerCase(), x]));
+      for (const e of staff.keys()) if (!byEmail.has(e)) byEmail.set(e, { email: e, role: '' });
+      draft = [...byEmail.values()].map((p) => Object.assign(p, { who: staff.get(p.email) || {} }))
+        .sort((a, b) => rank(a.role) - rank(b.role) || (a.who.name || a.email).localeCompare(b.who.name || b.email, 'zh-Hant'));
       renderRows();
       if (note) body.prepend(h('div', { class: 'hint' }, note));
     });
