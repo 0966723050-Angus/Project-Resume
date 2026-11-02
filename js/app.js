@@ -81,8 +81,22 @@
       if (can('pmView')) pmLoad(false, true).then(() => { if (!$('listView').hidden) fillCodeFilter(); }).catch(() => {}); // 專案清單以專案管理檔為準
       route();
     } catch (err) {
-      toast(errMsg(err), 5000);
+      if (err && err.type === 'redirect_stuck') { busy(''); openInBrowser(true); } else toast(errMsg(err), 5000);
     } finally { busy(''); }
+  }
+  // 釘釘等 App 內建瀏覽器無法完成 Google 登入:引導改用 Chrome/Safari 開啟(Android 可直接叫起 Chrome)
+  function openInBrowser(stuck) {
+    const url = location.origin + location.pathname + location.hash;
+    const btns = [{ label: '取消', value: '' }, { label: '複製網址', value: 'copy' }];
+    if (Drive.IS_ANDROID) btns.push({ label: '用 Chrome 開啟', value: 'chrome', cls: 'btn-primary' });
+    dialog(stuck ? '無法開啟 Google 登入' : '請改用瀏覽器開啟',
+      (stuck ? '這個瀏覽器(例如釘釘內建瀏覽器)擋下了 Google 登入頁。\n' : '釘釘等 App 內建的瀏覽器無法登入 Google。\n') +
+      `請點右上角「⋯」→「在瀏覽器中開啟」,或${Drive.IS_ANDROID ? '按「用 Chrome 開啟」' : '複製網址後貼到 Safari / Chrome'}。
+(只看分享的專案履歷不需登入,可直接在釘釘中開啟)`, btns)
+      .then(async (v) => {
+        if (v === 'chrome') location.href = `intent://${location.host}${location.pathname}${location.hash}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+        else if (v === 'copy') { try { await navigator.clipboard.writeText(url); toast('已複製網址,請貼到瀏覽器開啟'); } catch { toast(url, 8000); } }
+      });
   }
 
   async function reload() {
@@ -2849,6 +2863,10 @@
     if (await confirmYes('登出', `確定登出 ${myEmail()}?\n下次開啟需要重新登入。`, '登出', 'btn-danger')) signOut();
   };
   $('signInBtn').onclick = signIn;
+  if (Drive.IN_APP) {
+    $('welcomeMsg').textContent = '您正在 App 內建瀏覽器(如釘釘)中開啟;若登入沒有反應,請點右上角「⋯」→「在瀏覽器中開啟」。';
+    $('welcomeMsg').after(h('button', { type: 'button', class: 'btn btn-ghost wide', onclick: () => openInBrowser(false) }, '🌐 改用瀏覽器開啟'));
+  }
 
   // 權杖過期(約 1 小時)時:顯示「繼續」鍵,點擊後以記住的帳號自動完成登入(不需再選帳號)
   let reauthPending = null;

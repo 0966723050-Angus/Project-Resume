@@ -31,6 +31,9 @@
   const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile|DingTalk/i.test(navigator.userAgent) ||
     (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
   // 一律用資料夾網址(去掉 index.html;主畫面 App 的 start_url 是 ./index.html),須與 OAuth 用戶端登記的完全相同
+  // App 內建瀏覽器(釘釘、LINE、FB…):Google 不允許在這類瀏覽器中登入,需改用 Chrome/Safari 開啟
+  const IN_APP = /DingTalk|AliApp|Line\/|FBAN|FBAV|Instagram|MicroMessenger|; wv\)/i.test(navigator.userAgent);
+  const IS_ANDROID = /Android/i.test(navigator.userAgent);
   const redirectUri = () => location.origin + location.pathname.replace(/[^/]*$/, '');
   let redirectError = '';
   (function handleRedirectReturn() {
@@ -60,7 +63,13 @@
     if (hint) u.set('login_hint', hint);
     if (prompt === undefined && !hint) u.set('prompt', 'select_account');
     location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + u;
-    return new Promise(() => {}); // 頁面即將離開
+    // 頁面即將離開;App 內建瀏覽器(如 Android 釘釘)可能擋下導向而停在原頁,逾時就回報讓 App 提示改用瀏覽器開啟
+    return new Promise((_, reject) => setTimeout(() => {
+      if (document.visibilityState === 'hidden') return;
+      const e = new Error('無法開啟 Google 登入頁');
+      e.type = 'redirect_stuck';
+      reject(e);
+    }, 12000));
   }
 
   function requestToken(prompt) {
@@ -228,5 +237,5 @@
 
   const viewLink = (id) => `https://drive.google.com/file/d/${id}/view`;
 
-  window.Drive = { IS_MOBILE, redirectError: () => redirectError, requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, getMeta, download, upload, createFile, ensureFolder, media, trash, permissions, whoAmI, signOut, viewLink };
+  window.Drive = { IS_MOBILE, IN_APP, IS_ANDROID, redirectError: () => redirectError, requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, getMeta, download, upload, createFile, ensureFolder, media, trash, permissions, whoAmI, signOut, viewLink };
 })();
