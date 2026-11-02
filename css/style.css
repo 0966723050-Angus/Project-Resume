@@ -276,6 +276,11 @@ span.combo-btn { display: flex; align-items: center; justify-content: center; po
 .add-row input { flex: 1 1 0; min-height: 40px !important; }
 .add-row.two input:first-child { flex: 0 1 38%; }
 .add-row .btn { flex: none; }
+.add-row.staff-add { flex-wrap: wrap; }
+.add-row.staff-add input { flex: 1 1 100px; }
+.add-row.staff-add input[type="email"] { flex-basis: 200px; }
+.staff-item small { color: var(--muted); margin-left: 6px; }
+.staff-item .staff-mail { display: block; font-size: 12.5px; color: var(--muted); }
 
 /* ---------- 其他 ---------- */
 .lightbox { position: fixed; inset: 0; z-index: 65; background: rgba(0,0,0,.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; }

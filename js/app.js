@@ -2179,6 +2179,7 @@
       h('div', { class: 'hint' }, `檔案 ID(供分享連結 Apps Script 的 FILE_ID):${S.fileId || ''}`),
       h('div', { class: 'hint' }, CFG.SHARE_URL ? '分享連結:免登入檢視已啟用' : '分享連結:尚未設定 SHARE_URL,開啟連結需登入'));
     renderListEditors();
+    renderStaffEditor();
     renderPermEditor();
   }
   function renderListEditors() {
@@ -2245,6 +2246,45 @@
         ul, h('div', { class: 'add-row' + (L.key === 'project' ? ' two' : '') }, ...inputs, addBtn)));
     }
   }
+  // 公司人員:姓名/部門/E-Mail(存在 Excel「公司人員」工作表),可新增與刪除;只重畫面板內容,保持展開
+  function renderStaffEditor() {
+    const box = $('staffEditor');
+    box.innerHTML = '';
+    const count = h('span', { class: 'count' });
+    const body = h('div', {});
+    const panel = h('details', { class: 'panel list-panel' }, h('summary', { class: 'panel-title' }, '公司人員', count), body);
+    const save = (label, fn) => commit(label, (d) => { const list = Staff.read(d.book); fn(list); Staff.write(d.book, list); });
+    const draw = () => {
+      const people = S.data ? Staff.read(S.data.book) : [];
+      count.textContent = String(people.length);
+      const [ni, di, ei] = [h('input', { type: 'text', placeholder: '姓名' }), h('input', { type: 'text', placeholder: '部門' }), h('input', { type: 'email', placeholder: 'E-Mail' })];
+      body.innerHTML = '';
+      body.append(
+        h('div', { class: 'list-items' }, ...(people.length ? people.map((p) => h('div', { class: 'list-item staff-item' },
+          h('span', {}, h('b', {}, p.name || '(未填姓名)'), p.dept ? h('small', {}, p.dept) : '', p.email ? h('span', { class: 'staff-mail' }, p.email) : ''),
+          h('button', {
+            type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: async () => {
+              if (!(await confirmYes('刪除人員', `確定刪除「${[p.name, p.dept].filter(Boolean).join(' / ')}」?`, '刪除', 'btn-danger'))) return;
+              const same = (x) => x.name === p.name && x.dept === p.dept && x.email === p.email;
+              try { await save('刪除人員…', (list) => { const i = list.findIndex(same); if (i >= 0) list.splice(i, 1); }); toast('已刪除'); } catch (err) { toast('刪除失敗:' + errMsg(err), 5000); }
+              draw();
+            },
+          }, '🗑'))) : [h('div', { class: 'empty small' }, '尚無人員')])),
+        h('div', { class: 'add-row staff-add' }, ni, di, ei, h('button', {
+          type: 'button', class: 'btn btn-primary btn-sm', onclick: async () => {
+            const p = { name: ni.value.trim(), dept: di.value.trim(), email: ei.value.trim().toLowerCase() };
+            if (!p.name) return toast('請輸入姓名');
+            if (p.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) return toast('E-Mail 格式不正確');
+            if (p.email && people.some((x) => x.email.toLowerCase() === p.email)) return toast('已有相同 E-Mail 的人員');
+            try { await save('新增人員…', (list) => { list.push(p); }); toast('已新增'); } catch (err) { return toast('新增失敗:' + errMsg(err), 5000); }
+            draw();
+          },
+        }, '＋ 加入')));
+    };
+    draw();
+    box.append(panel);
+  }
+
   // 權限:每位人員以核取方塊指定各項權限;名單 = 專案履歷與 Work List 檔案的雲端硬碟共用人員 + 已設定的人員
   const ROLE_LABELS = { owner: '擁有者', organizer: '擁有者', writer: '編輯者', fileOrganizer: '編輯者', commenter: '留言者', reader: '檢視者' };
   function renderPermEditor() {
