@@ -2179,6 +2179,7 @@
   const hourProj = (code) => projList().find((p) => p.code === code);
   const fmtH = (n) => String(Math.round(n * 10) / 10);
   let hrEdit = null; // 修改中的紀錄 id;null = 新增模式
+  let hrSumOpen = false; // 月份統計明細是否展開(預設收合)
   let hrEntries = [];
   const newEntry = () => ({ code: '', cat: '', start: '', end: '', hours: '', note: '', auto: true });
 
@@ -2213,25 +2214,28 @@
   function renderHours() {
     const recs = monthHours().sort((a, b) => String(b.start).localeCompare(String(a.start)));
     const total = recs.reduce((s, r) => s + (Number(r.hours) || 0), 0);
-    // 統計:依專案(與類別)加總;檢視全部人員時另列每人合計
-    const byProj = new Map();
-    for (const r of recs) {
-      const k = r.code || '(未指定)';
-      const x = byProj.get(k) || { code: r.code, name: r.pname || (hourProj(r.code) || {}).name || '', total: 0, cat: {} };
-      x.total += Number(r.hours) || 0;
-      x.cat[r.cat || '未分類'] = (x.cat[r.cat || '未分類'] || 0) + (Number(r.hours) || 0);
-      byProj.set(k, x);
-    }
+    // 月份統計方塊:標題列(月份合計)永遠顯示,點擊收合/展開明細(預設收合);明細一筆一列,點列可修改
     const sum = $('hrSummary');
     sum.innerHTML = '';
-    sum.append(h('div', { class: 'hr-total' }, h('span', {}, `${$('hrMonth').value.replace('-', '/')} 合計`), h('b', {}, fmtH(total) + ' 小時'), h('small', {}, `${recs.length} 筆`)));
-    if (byProj.size) {
-      sum.append(h('div', { class: 'hr-table-wrap' }, h('table', { class: 'hr-table' },
-        h('thead', {}, h('tr', {}, h('th', {}, '作業項目'), ...Hours.CATS.map((c) => h('th', {}, c)), h('th', {}, '合計'))),
-        h('tbody', {}, ...[...byProj.values()].sort((a, b) => b.total - a.total).map((x) => h('tr', {},
-          h('td', {}, h('b', {}, x.code || '(未指定)'), x.name ? h('small', {}, x.name) : ''),
-          ...Hours.CATS.map((c) => h('td', { class: 'num' }, x.cat[c] ? fmtH(x.cat[c]) : '')),
-          h('td', { class: 'num' }, h('b', {}, fmtH(x.total)))))))));
+    sum.classList.toggle('open', hrSumOpen && !!recs.length);
+    sum.append(h('button', { type: 'button', class: 'hr-total', 'aria-expanded': String(hrSumOpen), disabled: !recs.length,
+      onclick: () => { hrSumOpen = !hrSumOpen; renderHours(); } },
+      h('span', {}, `${$('hrMonth').value.replace('-', '/')} 合計`), h('b', {}, fmtH(total) + ' 小時'), h('small', {}, `${recs.length} 筆`),
+      recs.length ? h('i', { class: 'hr-caret' }, hrSumOpen ? '▲ 收合' : '▼ 展開') : null));
+    if (hrSumOpen && recs.length) {
+      const catSum = (c) => recs.filter((r) => r.cat === c).reduce((s, r) => s + (Number(r.hours) || 0), 0);
+      sum.append(h('div', { class: 'hr-table-wrap' }, h('table', { class: 'hr-table hr-detail' },
+        h('thead', {}, h('tr', {}, h('th', {}, '日期'), h('th', {}, '作業項目'), ...Hours.CATS.map((c) => h('th', {}, c)), h('th', {}, '合計'))),
+        h('tbody', {}, ...[...recs].reverse().map((r) => {
+          const v = Number(r.hours) || 0, ok = canEditHour(r);
+          return h('tr', { class: ok ? 'hr-row-edit' : '', title: ok ? '點擊修改' : '', onclick: ok ? () => editHour(r) : null },
+            h('td', { class: 'hr-date' }, String(r.start || '').slice(5, 10).replace('-', '/')),
+            h('td', {}, h('b', {}, r.code || '(未指定)'), (r.pname || (hourProj(r.code) || {}).name) ? h('small', {}, r.pname || hourProj(r.code).name) : ''),
+            ...Hours.CATS.map((c) => h('td', { class: 'num' }, r.cat === c ? fmtH(v) : '')),
+            h('td', { class: 'num' }, h('b', {}, fmtH(v))));
+        })),
+        h('tfoot', {}, h('tr', {}, h('td', { colspan: '2' }, '合計'), ...Hours.CATS.map((c) => h('td', { class: 'num' }, catSum(c) ? fmtH(catSum(c)) : '')),
+          h('td', { class: 'num' }, h('b', {}, fmtH(total))))))));
     }
     const box = $('hrList');
     box.innerHTML = '';
