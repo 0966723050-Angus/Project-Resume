@@ -2579,12 +2579,14 @@
         if (!v.name) return toast('請輸入姓名'), null;
         if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) return toast('E-Mail 格式不正確'), null;
         if (v.email && others.some((x) => x.email.toLowerCase() === v.email)) return toast('已有相同 E-Mail 的人員'), null;
+        if (v.empNo && others.some((x) => x.empNo === v.empNo)) return toast('已有相同員工代號的人員'), null;
         return v;
       };
       return { els, value };
     };
     const draw = () => {
-      const people = staffList();
+      // 依員工代號排序(沒有代號的排後面,再依姓名)
+      const people = staffList().sort((a, b) => (!a.empNo - !b.empNo) || a.empNo.localeCompare(b.empNo, 'en', { numeric: true }) || a.name.localeCompare(b.name, 'zh-Hant'));
       count.textContent = String(people.length);
       const row = (p) => {
         if (editing && same(editing)(p)) {
@@ -2604,7 +2606,7 @@
               }, '儲存'))));
         }
         return h('div', { class: 'list-item staff-item' },
-          h('span', {}, h('b', {}, p.name || '(未填姓名)'), p.ename ? h('small', {}, p.ename) : '', p.dept ? h('small', {}, p.dept) : '',
+          h('span', {}, p.empNo ? h('span', { class: 'staff-no' }, p.empNo) : '', h('b', {}, p.name || '(未填姓名)'), p.ename ? h('small', {}, p.ename) : '', p.dept ? h('small', {}, p.dept) : '',
             p.email ? h('span', { class: 'staff-mail' }, p.email) : ''),
           h('button', { type: 'button', class: 'del-btn', 'aria-label': '編輯', onclick: () => { editing = p; draw(); } }, '✏️'),
           h('button', {
@@ -2628,7 +2630,24 @@
             draw();
             renderPermEditor();
           },
-        }, '＋ 加入'))));
+        }, '＋ 加入'))),
+        importBox());
+    };
+    // 批次匯入員工代號:從 Excel 複製「員工代號、姓名」兩欄貼上
+    const importBox = () => {
+      const ta = h('textarea', { rows: 5, class: 'staff-import', placeholder: 'ATK-0001\t王小明\nATK-0002\t李大華' });
+      return h('details', { class: 'staff-import-box' }, h('summary', {}, '批次匯入員工代號'),
+        h('div', { class: 'hint' }, '從 Excel 複製「員工代號、姓名」兩欄貼上(每行一人)。同名的人會補上員工代號,名單中沒有的人會新增。'),
+        ta, h('div', { class: 'staff-btns' }, h('button', {
+          type: 'button', class: 'btn btn-primary btn-sm', onclick: async () => {
+            if (!ta.value.trim()) return toast('請先貼上員工代號與姓名');
+            let r;
+            try { await save('匯入員工代號…', (list) => { r = Staff.importEmpNo(list, ta.value); }); } catch (err) { return toast('匯入失敗:' + errMsg(err), 5000); }
+            toast(`✅ 已匯入:更新 ${r.updated} 人、新增 ${r.added} 人` + (r.skipped ? `,略過 ${r.skipped} 行` : ''), 4500);
+            draw();
+            renderPermEditor();
+          },
+        }, '匯入')));
     };
     draw();
     box.append(panel);
