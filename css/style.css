@@ -560,3 +560,31 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
   position: fixed; pointer-events: none; background: var(--text); color: var(--bg); font-size: 12px; padding: 6px 10px;
   border-radius: 8px; max-width: 240px; z-index: 55; opacity: 0; transition: opacity .12s ease;
 }
+
+/* 工時統計 */
+#hrMonth { flex: 1 1 auto; }
+#hrWho { flex: 1 1 auto; }
+.hr-total { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.hr-total span { color: var(--muted); font-size: 13.5px; }
+.hr-total b { font-size: 22px; color: var(--primary); }
+.hr-total small { color: var(--muted); }
+.hr-table-wrap { overflow-x: auto; margin-top: 10px; }
+.hr-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.hr-table th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12.5px; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.hr-table td { padding: 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.hr-table td small { display: block; color: var(--muted); font-size: 12px; }
+.hr-table .num, .hr-table th:not(:first-child) { text-align: right; white-space: nowrap; }
+.hr-people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.hr-entry { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px 12px; margin: 12px 0 0; background: var(--surface-2); }
+.hr-entry-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: var(--primary); }
+#hrAddEntry { margin-top: 12px; }
+.hr-save-row { justify-content: flex-end; margin-top: 12px; }
+.hr-list-title { font-size: 15px; margin: 18px 2px 8px; color: var(--primary); }
+.hr-card .card-foot { align-items: center; }
+.hr-hours { color: var(--text); font-size: 14px; }
+.hr-acts { margin-left: auto; display: flex; gap: 4px; }
+.hr-entry .field select:not(.dt-sel), .hr-entry .field input[type="number"], #hrName select {
+  width: 100%; min-height: 44px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  padding: 9px 12px; font-size: 16px; color: var(--text);
+}
+.hr-entry .field input[type="text"], .hr-entry .field input[type="date"], .hr-entry .field textarea, .hr-entry .dt-sel { background: var(--surface); }

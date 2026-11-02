@@ -110,7 +110,7 @@
   }
 
   // ---------- 頁首 / 版面 ----------
-  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmEditView', 'schedView', 'workView', 'ganttView', 'settingsView'];
+  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmEditView', 'schedView', 'workView', 'ganttView', 'hoursView', 'settingsView'];
   function showView(id, { title = 'ATK專案履歷', sub = '', back = null, save = false, link = false } = {}) {
     for (const v of VIEWS) $(v).hidden = v !== id;
     setTitle(title, sub);
@@ -122,7 +122,7 @@
     $('dingBtn').hidden = !link || !CFG.SHARE_URL || !S.ready; // 發佈:只限登入的同仁(免登入檢視者不顯示)
     hideNav();
     for (const a of document.querySelectorAll('[data-nav]')) {
-      a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm') || (id === 'workView' && a.dataset.nav === 'work') || (id === 'ganttView' && a.dataset.nav === 'gantt'));
+      a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm') || (id === 'workView' && a.dataset.nav === 'work') || (id === 'ganttView' && a.dataset.nav === 'gantt') || (id === 'hoursView' && a.dataset.nav === 'hours'));
     }
     document.body.classList.toggle('wide-main', id === 'ganttView'); // 甘特圖用滿整個寬度
     window.scrollTo(0, 0);
@@ -192,6 +192,7 @@
     else if (parts[0] === 'settings' && can('settings')) showSettings();
     else if (parts[0] === 'pm' && can('pmView')) (parts[1] && !(parts[1] === 'new' && !can('pmEdit')) ? openPm(parts[1]) : showPmList());
     else if (parts[0] === 'sched' && parts[1] && can('pmView')) openSched(parts[1]);
+    else if (parts[0] === 'hours') showHours();
     else if (parts[0] === 'work') WorkList.show('list');
     else if (parts[0] === 'gantt') WorkList.show('gantt');
     else showList();
@@ -908,11 +909,12 @@
     if (!String(obj.code || '').trim() && !String(obj.name || '').trim()) { toast('請填寫專案代號或專案名稱'); return false; }
     if (obj.start && obj.end && obj.end < obj.start) { toast('作業結束時間早於開始時間,請確認'); return false; }
     const res = clone(obj);
+    let nHours = 0;
     try {
-      await commit('儲存專案履歷…', (d) => applyResume(d, res));
+      await commit('儲存專案履歷…', (d) => { applyResume(d, res); nHours = hoursFromResume(d, res); });
     } catch (err) { toast('儲存失敗:' + errMsg(err), 6000); return false; }
     afterResumeSaved(res);
-    toast('✅ 已儲存到雲端硬碟');
+    toast('✅ 已儲存到雲端硬碟' + (nHours ? `,並為 ${nHours} 位作業人員建立工時紀錄` : ''), nHours ? 4500 : undefined);
     return true;
   }
   function afterResumeSaved(res) {
@@ -2164,6 +2166,239 @@
     S.schedReturn = { row: editing.obj._row, code };
     go('#/sched/' + encodeURIComponent(code));
   };
+
+  // ---------- 工時統計(存在 Project Resume.xlsx「工時」工作表) ----------
+  // 一般同仁:看/改自己的紀錄;「工時統計(全員)」權限:看全部、可替他人登錄
+  const HR_LS_MONTH = 'pr_hours_month';
+  const hoursList = () => (S.data ? Hours.read(S.data.book) : []);
+  const curMonth = () => { const t = new Date(); return `${t.getFullYear()}-${pad(t.getMonth() + 1)}`; };
+  const staffOfEmail = (email) => staffList().find((x) => x.email && x.email.toLowerCase() === String(email || '').toLowerCase());
+  const myStaffName = () => (staffOfEmail(myEmail()) || {}).name || myName();
+  const canEditHour = (r) => can('hoursAll') || (!!r.email && r.email === myEmail());
+  const hourProj = (code) => projList().find((p) => p.code === code);
+  const fmtH = (n) => String(Math.round(n * 10) / 10);
+  let hrEdit = null; // 修改中的紀錄 id;null = 新增模式
+  let hrEntries = [];
+  const newEntry = () => ({ code: '', cat: '', start: '', end: '', hours: '', note: '', auto: true });
+
+  function showHours() {
+    const m = $('hrMonth');
+    if (!m.value) m.value = ssGet(HR_LS_MONTH) || curMonth();
+    const who = $('hrWho');
+    who.hidden = !can('hoursAll');
+    if (can('hoursAll')) {
+      const cur = who.value;
+      const names = new Set([...staffList().map((x) => x.name), ...hoursList().map((r) => r.name)].filter(Boolean));
+      who.innerHTML = '';
+      who.append(h('option', { value: '' }, '全部人員'), ...[...names].sort((a, b) => a.localeCompare(b, 'zh-Hant')).map((n) => h('option', { value: n }, n)));
+      who.value = names.has(cur) ? cur : '';
+    }
+    showView('hoursView', { title: '工時統計', sub: fileLine() });
+    if (!hrEntries.length) resetHourForm(); else renderHourForm($('hrNameInput') && $('hrNameInput').value);
+    renderHours();
+  }
+  function monthHours() {
+    const mon = $('hrMonth').value;
+    const all = can('hoursAll'), who = $('hrWho').value;
+    return hoursList().filter((r) => String(r.start || '').startsWith(mon) &&
+      (all ? !who || r.name === who : r.email === myEmail() || (!r.email && r.name === myStaffName())));
+  }
+  function renderHours() {
+    const recs = monthHours().sort((a, b) => String(b.start).localeCompare(String(a.start)));
+    const total = recs.reduce((s, r) => s + (Number(r.hours) || 0), 0);
+    // 統計:依專案(與類別)加總;檢視全部人員時另列每人合計
+    const byProj = new Map();
+    for (const r of recs) {
+      const k = r.code || '(未指定)';
+      const x = byProj.get(k) || { code: r.code, name: r.pname || (hourProj(r.code) || {}).name || '', total: 0, cat: {} };
+      x.total += Number(r.hours) || 0;
+      x.cat[r.cat || '未分類'] = (x.cat[r.cat || '未分類'] || 0) + (Number(r.hours) || 0);
+      byProj.set(k, x);
+    }
+    const sum = $('hrSummary');
+    sum.innerHTML = '';
+    sum.append(h('div', { class: 'hr-total' }, h('span', {}, `${$('hrMonth').value.replace('-', '/')} 合計`), h('b', {}, fmtH(total) + ' 小時'), h('small', {}, `${recs.length} 筆`)));
+    if (byProj.size) {
+      sum.append(h('div', { class: 'hr-table-wrap' }, h('table', { class: 'hr-table' },
+        h('thead', {}, h('tr', {}, h('th', {}, '作業項目'), ...Hours.CATS.map((c) => h('th', {}, c)), h('th', {}, '合計'))),
+        h('tbody', {}, ...[...byProj.values()].sort((a, b) => b.total - a.total).map((x) => h('tr', {},
+          h('td', {}, h('b', {}, x.code || '(未指定)'), x.name ? h('small', {}, x.name) : ''),
+          ...Hours.CATS.map((c) => h('td', { class: 'num' }, x.cat[c] ? fmtH(x.cat[c]) : '')),
+          h('td', { class: 'num' }, h('b', {}, fmtH(x.total)))))))));
+    }
+    if (can('hoursAll') && !$('hrWho').value && recs.length) {
+      const byWho = new Map();
+      for (const r of recs) byWho.set(r.name || '(未填)', (byWho.get(r.name || '(未填)') || 0) + (Number(r.hours) || 0));
+      sum.append(h('div', { class: 'hr-people' }, ...[...byWho].sort((a, b) => b[1] - a[1]).map(([n, v]) => h('span', { class: 'chip' }, `${n} ${fmtH(v)}h`))));
+    }
+    const box = $('hrList');
+    box.innerHTML = '';
+    $('hrEmpty').hidden = !!recs.length;
+    for (const r of recs) {
+      const p = hourProj(r.code);
+      const mine = canEditHour(r);
+      const sameDay = String(r.end).slice(0, 10) === String(r.start).slice(0, 10);
+      box.append(h('div', { class: 'card hr-card' + (mine ? '' : ' readonly') },
+        h('div', { class: 'card-top' },
+          h('span', { class: 'date' }, fmtDT(r.start) + (r.end ? ' ~ ' + (sameDay ? String(r.end).slice(11) : fmtDT(r.end)) : '')),
+          r.cat ? h('span', { class: 'chip' }, r.cat) : null,
+          r.resume ? h('span', { class: 'chip' }, '專案履歷') : null,
+          h('span', { class: 'author' }, r.name)),
+        h('div', { class: 'card-title' }, [r.code, r.pname || (p && p.name)].filter(Boolean).join(' ') || '(未指定作業項目)'),
+        r.note ? h('div', { class: 'card-sub' }, r.note) : null,
+        h('div', { class: 'card-foot' }, h('b', { class: 'hr-hours' }, fmtH(Number(r.hours) || 0) + ' 小時'),
+          mine ? h('span', { class: 'hr-acts' },
+            h('button', { type: 'button', class: 'del-btn', 'aria-label': '修改', onclick: () => editHour(r) }, '✏️'),
+            h('button', { type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: () => deleteHour(r) }, '🗑')) : null)));
+    }
+  }
+
+  // ---- 登錄表單:姓名 + 多筆工時紀錄(＋ 工時紀錄 增加一筆) ----
+  function resetHourForm() {
+    hrEdit = null;
+    hrEntries = [newEntry()];
+    renderHourForm();
+  }
+  function editHour(r) {
+    hrEdit = r.id;
+    hrEntries = [{ code: r.code, cat: r.cat, start: r.start, end: r.end, hours: r.hours, note: r.note, auto: Hours.diffHours(r.start, r.end) === Number(r.hours) }];
+    renderHourForm(r.name);
+    $('hrFormPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function renderHourForm(name) {
+    $('hrFormTitle').textContent = hrEdit ? '修改工時紀錄' : '登錄工時';
+    const nameBox = $('hrName');
+    nameBox.innerHTML = '';
+    let nameEl;
+    if (can('hoursAll')) {
+      nameEl = h('select', {});
+      const names = [...new Set([myStaffName(), ...staffList().map((x) => x.name), name].filter(Boolean))];
+      nameEl.append(...names.map((n) => h('option', { value: n }, n)));
+      nameEl.value = name || myStaffName();
+    } else {
+      nameEl = h('input', { type: 'text', readonly: true });
+      nameEl.value = name || myStaffName();
+    }
+    nameEl.id = 'hrNameInput';
+    nameBox.append(field('姓名', nameEl, staffOfEmail(myEmail()) || can('hoursAll') ? null : h('small', { class: 'hint' }, '公司人員中找不到您的 E-Mail,暫以帳號名稱登錄;請管理者在 設定 → 公司人員 加入')));
+    const box = $('hrEntries');
+    box.innerHTML = '';
+    hrEntries.forEach((en, i) => box.append(hourEntryEl(en, i)));
+    $('hrAddEntry').hidden = !!hrEdit;
+    $('hrCancel').hidden = !hrEdit;
+  }
+  function hourEntryEl(en, i) {
+    const projSel = h('select', {}, h('option', { value: '' }, '請選擇作業項目…'),
+      ...projDesc().filter((p) => p.code).map((p) => h('option', { value: p.code }, `${p.code} ${p.name}`)));
+    if (en.code && !hourProj(en.code)) projSel.append(h('option', { value: en.code }, en.code));
+    projSel.value = en.code || '';
+    projSel.onchange = () => { en.code = projSel.value; };
+    const catSel = h('select', {}, h('option', { value: '' }, '請選擇…'), ...Hours.CATS.map((c) => h('option', { value: c }, c)));
+    catSel.value = en.cat || '';
+    catSel.onchange = () => { en.cat = catSel.value; };
+    const hrs = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: '0.5' });
+    hrs.value = en.hours === '' || en.hours == null ? '' : String(en.hours);
+    hrs.oninput = () => { en.hours = hrs.value; en.auto = false; };
+    const recalc = () => { const d = Hours.diffHours(en.start, en.end); if (en.auto && d != null) { en.hours = d; hrs.value = String(d); } };
+    const note = h('textarea', { rows: 2 });
+    note.value = en.note || '';
+    note.oninput = () => { en.note = note.value; autoGrow(note); };
+    const head = h('div', { class: 'hr-entry-head' }, h('b', {}, hrEdit ? '工時紀錄' : `工時紀錄 ${i + 1}`),
+      hrEntries.length > 1 ? h('button', { type: 'button', class: 'del-btn', 'aria-label': '移除這筆', onclick: () => { hrEntries.splice(i, 1); renderHourForm($('hrNameInput').value); } }, '✕') : null);
+    return h('div', { class: 'hr-entry' }, head, h('div', { class: 'fields' },
+      field('作業項目', projSel), field('報工類別', catSel),
+      fDateTime('開始時間', en, 'start', recalc),
+      fDateTime('結束時間', en, 'end', recalc),
+      field('報工總時數', hrs, h('small', { class: 'hint' }, '依開始/結束時間自動計算,可手動修改')),
+      field('備註說明', note)));
+  }
+  async function saveHours() {
+    const name = $('hrNameInput').value.trim();
+    if (!name) return toast('請填寫姓名');
+    const st = staffList().find((x) => x.name === name);
+    const email = !can('hoursAll') || name === myStaffName() ? myEmail() : (st && st.email) || '';
+    for (const [i, en] of hrEntries.entries()) {
+      const no = hrEntries.length > 1 ? `第 ${i + 1} 筆:` : '';
+      if (!en.code) return toast(no + '請選擇作業項目');
+      if (!en.cat) return toast(no + '請選擇報工類別');
+      if (!en.start || !en.end) return toast(no + '請填寫開始與結束時間');
+      if (en.end <= en.start) return toast(no + '結束時間需晚於開始時間');
+      if (!(Number(en.hours) > 0)) return toast(no + '請填寫報工總時數');
+    }
+    const recs = hrEntries.map((en) => ({
+      name, email, code: en.code, pname: (hourProj(en.code) || {}).name || '', cat: en.cat,
+      start: en.start, end: en.end, hours: Number(en.hours), note: String(en.note || '').trim(), resume: '', by: myEmail(),
+    }));
+    try {
+      await commit('儲存工時…', (d) => {
+        const list = Hours.read(d.book);
+        if (hrEdit) {
+          const i = list.findIndex((x) => x.id === hrEdit);
+          if (i < 0) throw new Error('找不到這筆工時紀錄,可能已被刪除,請重新載入');
+          if (!canEditHour(list[i])) throw new Error('只能修改自己的工時紀錄');
+          list[i] = { ...list[i], ...recs[0], id: hrEdit, resume: list[i].resume, by: list[i].by || myEmail() };
+        } else recs.forEach((r) => list.push({ ...r, id: Store.newId('WH') }));
+        Hours.write(d.book, list);
+      });
+    } catch (err) { return toast('儲存失敗:' + errMsg(err), 6000); }
+    toast(hrEdit ? '✅ 已更新工時紀錄' : `✅ 已儲存 ${recs.length} 筆工時`);
+    const mon = String(recs[0].start).slice(0, 7);
+    if (mon !== $('hrMonth').value) { $('hrMonth').value = mon; ssSet(HR_LS_MONTH, mon); }
+    resetHourForm();
+    renderHours();
+  }
+  async function deleteHour(r) {
+    if (!(await confirmYes('刪除工時紀錄', `確定刪除 ${fmtDT(r.start)} ${r.code || ''} ${fmtH(Number(r.hours) || 0)} 小時 這筆紀錄?`, '刪除', 'btn-danger'))) return;
+    try {
+      await commit('刪除工時…', (d) => {
+        const list = Hours.read(d.book);
+        const i = list.findIndex((x) => x.id === r.id);
+        if (i < 0) return;
+        if (!canEditHour(list[i])) throw new Error('只能刪除自己的工時紀錄');
+        list.splice(i, 1);
+        Hours.write(d.book, list);
+      });
+    } catch (err) { return toast('刪除失敗:' + errMsg(err), 6000); }
+    if (hrEdit === r.id) resetHourForm();
+    toast('已刪除');
+    renderHours();
+  }
+  // 專案履歷存檔時:依作業人員逐人建立工時(已建立過的人不重複;時數取履歷的報工時數,類別預設「工程」)
+  // 作業人員以姓名或英文姓名比對公司人員,帶入中文姓名與 E-Mail
+  function hoursFromResume(d, res) {
+    const people = splitNames(res.members);
+    if (!people.length || !res.start) return 0;
+    const staff = Staff.read(d.book);
+    const byName = (n) => staff.find((x) => [x.name, x.ename].some((v) => v && v.trim().toLowerCase() === n.toLowerCase()));
+    const list = Hours.read(d.book);
+    const have = new Set(list.filter((x) => x.resume === res.id).map((x) => x.name.toLowerCase()));
+    const hrs = Number(res.hours) > 0 ? Number(res.hours) : Hours.diffHours(res.start, res.end) || '';
+    let n = 0;
+    for (const raw of people) {
+      const st = byName(raw);
+      const name = (st && st.name) || raw;
+      if (have.has(name.toLowerCase()) || have.has(raw.toLowerCase())) continue;
+      have.add(name.toLowerCase());
+      list.push({
+        id: Store.newId('WH'), name, email: (st && st.email) || '', code: res.code || '', pname: res.name || '', cat: '工程',
+        start: res.start, end: res.end || '', hours: hrs, note: '專案履歷:' + resumeTitle(res).replace(/ 專案履歷$/, ''), resume: res.id, by: myEmail(),
+      });
+      n++;
+    }
+    if (n) Hours.write(d.book, list);
+    return n;
+  }
+  $('hrMonth').onchange = () => { ssSet(HR_LS_MONTH, $('hrMonth').value); renderHours(); };
+  $('hrWho').onchange = renderHours;
+  $('hrAddEntry').onclick = () => {
+    const last = hrEntries[hrEntries.length - 1];
+    const en = newEntry();
+    if (last) { en.start = last.end || ''; en.cat = last.cat; } // 下一筆預設接續上一筆的結束時間與類別
+    hrEntries.push(en);
+    renderHourForm($('hrNameInput').value);
+  };
+  $('hrSave').onclick = saveHours;
+  $('hrCancel').onclick = () => resetHourForm();
 
   // ---------- 設定 ----------
   function showSettings() {
