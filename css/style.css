@@ -588,3 +588,14 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
   padding: 9px 12px; font-size: 16px; color: var(--text);
 }
 .hr-entry .field input[type="text"], .hr-entry .field input[type="date"], .hr-entry .field textarea, .hr-entry .dt-sel { background: var(--surface); }
+#hrStatsBtn, #hsExport { flex: none; min-height: 44px; }
+#hsMonth { flex: 1 1 auto; }
+.hs-table th { text-align: left !important; }
+.hs-table th.num, .hs-table td.num { text-align: right !important; }
+.hs-table td { white-space: nowrap; }
+.hs-table td:first-child { white-space: normal; width: 100%; }
+.hs-table td:first-child small { white-space: normal; }
+@media (max-width: 480px) { .hs-table { font-size: 13px; } .hs-table th, .hs-table td { padding: 6px 4px; } }
+.hs-table tfoot td { font-weight: 700; border-bottom: 0; }
+.hs-table .hs-out { color: var(--warn); }
+.hr-ask-month { width: 100%; min-height: 44px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 16px; background: var(--surface-2); }

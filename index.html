@@ -258,6 +258,7 @@
       <div class="filter-bar">
         <input id="hrMonth" type="month" aria-label="月份">
         <select id="hrWho" aria-label="人員" hidden></select>
+        <button id="hrStatsBtn" class="btn btn-primary btn-sm" type="button" hidden>📊 統計</button>
       </div>
       <div id="hrSummary" class="panel hr-summary"></div>
       <div id="hrFormPanel" class="panel">
@@ -273,6 +274,16 @@
       <h2 class="hr-list-title">本月工時紀錄</h2>
       <div id="hrList" class="card-list"></div>
       <div id="hrEmpty" class="empty" hidden>這個月還沒有工時紀錄</div>
+    </section>
+
+    <!-- 工時統計(全員) -->
+    <section id="hoursStatsView" class="view" hidden>
+      <div class="filter-bar">
+        <input id="hsMonth" type="month" aria-label="統計月份">
+        <button id="hsExport" class="btn btn-ghost btn-sm" type="button">⬇️ 匯出 Excel</button>
+      </div>
+      <div id="hsCount" class="count-line"></div>
+      <div class="panel hr-table-wrap"><div id="hsTable"></div><div id="hsEmpty" class="empty" hidden>這個月份沒有工時紀錄</div></div>
     </section>
 
     <section id="settingsView" class="view" hidden>

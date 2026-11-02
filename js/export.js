@@ -22,7 +22,6 @@
 
   function build(items, title) {
     const titles = { seq: '項次', ...Object.fromEntries(CFG.REMAIN_COLS.map((c) => [c.key, c.title])) };
-    const last = idxToCol(COLS.length);
     let rows = `<row r="1" ht="22" customHeight="1"><c r="A1" s="5" t="inlineStr"><is><t>${escXml(title)}</t></is></c></row>`;
     rows += '<row r="2" ht="30" customHeight="1">' + COLS.map(([k], i) =>
       `<c r="${idxToCol(i + 1)}2" s="1" t="inlineStr"><is><t>${escXml(titles[k])}</t></is></c>`).join('') + '</row>';
@@ -46,11 +45,17 @@
       }).join('');
       rows += `<row r="${r}" ht="${Math.min(409, Math.max(20, lines * 15 + 5))}" customHeight="1">${cells}</row>`;
     });
-    const lastRow = Math.max(2, items.length + 2);
+    return pack(rows, COLS.map(([, w]) => w), items.length, 'Remain Item');
+  }
+
+  // 把 sheetData 列包成單一工作表的 xlsx(第 1 列標題、第 2 列表頭、凍結窗格、自動篩選)
+  function pack(rows, widths, count, sheetName) {
+    const last = idxToCol(widths.length);
+    const lastRow = Math.max(2, count + 2);
     const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <dimension ref="A1:${last}${lastRow}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
-<sheetFormatPr defaultRowHeight="16.2"/><cols>${COLS.map(([, w], i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>
+<sheetFormatPr defaultRowHeight="16.2"/><cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>
 <sheetData>${rows}</sheetData><autoFilter ref="A2:${last}${lastRow}"/>
 <pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToHeight="0"/></worksheet>`;
     const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -74,7 +79,7 @@
       '_rels/.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
       'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Remain Item" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'Remain Item'!$A$2:$${last}$${lastRow}</definedName></definedNames></workbook>`,
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${escXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${escXml(sheetName)}'!$A$2:$${last}$${lastRow}</definedName></definedNames></workbook>`,
       'xl/_rels/workbook.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
       'xl/worksheets/sheet1.xml': sheet,
@@ -85,5 +90,23 @@
     return fflate.zipSync(out, { level: 6 });
   }
 
-  window.Exporter = { build };
+  // 一般表格匯出:cols = [{ title, w, kind: 'c' 置中 / 'w' 換行文字 / 'n' 數字 }];items 為與 cols 同順序的值陣列
+  function table(cols, items, title, sheetName) {
+    let rows = `<row r="1" ht="22" customHeight="1"><c r="A1" s="5" t="inlineStr"><is><t>${escXml(title)}</t></is></c></row>`;
+    rows += '<row r="2" ht="22" customHeight="1">' + cols.map((c, i) =>
+      `<c r="${idxToCol(i + 1)}2" s="1" t="inlineStr"><is><t>${escXml(c.title)}</t></is></c>`).join('') + '</row>';
+    items.forEach((vals, n) => {
+      const r = n + 3;
+      rows += `<row r="${r}">` + cols.map((c, i) => {
+        const ref = idxToCol(i + 1) + r, v = vals[i] ?? '';
+        const s = c.kind === 'w' ? 2 : 4;
+        if (v === '') return `<c r="${ref}" s="${s}"/>`;
+        if (c.kind === 'n' && Number.isFinite(Number(v))) return `<c r="${ref}" s="${s}"><v>${Number(v)}</v></c>`;
+        return `<c r="${ref}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${escXml(v)}</t></is></c>`;
+      }).join('') + '</row>';
+    });
+    return pack(rows, cols.map((c) => c.w), items.length, sheetName || 'Sheet1');
+  }
+
+  window.Exporter = { build, table };
 })();

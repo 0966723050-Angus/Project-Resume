@@ -110,7 +110,7 @@
   }
 
   // ---------- 頁首 / 版面 ----------
-  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmEditView', 'schedView', 'workView', 'ganttView', 'hoursView', 'settingsView'];
+  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmEditView', 'schedView', 'workView', 'ganttView', 'hoursView', 'hoursStatsView', 'settingsView'];
   function showView(id, { title = 'ATK專案履歷', sub = '', back = null, save = false, link = false } = {}) {
     for (const v of VIEWS) $(v).hidden = v !== id;
     setTitle(title, sub);
@@ -122,7 +122,7 @@
     $('dingBtn').hidden = !link || !CFG.SHARE_URL || !S.ready; // 發佈:只限登入的同仁(免登入檢視者不顯示)
     hideNav();
     for (const a of document.querySelectorAll('[data-nav]')) {
-      a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm') || (id === 'workView' && a.dataset.nav === 'work') || (id === 'ganttView' && a.dataset.nav === 'gantt') || (id === 'hoursView' && a.dataset.nav === 'hours'));
+      a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm') || (id === 'workView' && a.dataset.nav === 'work') || (id === 'ganttView' && a.dataset.nav === 'gantt') || (id.startsWith('hours') && a.dataset.nav === 'hours'));
     }
     document.body.classList.toggle('wide-main', id === 'ganttView'); // 甘特圖用滿整個寬度
     window.scrollTo(0, 0);
@@ -192,6 +192,7 @@
     else if (parts[0] === 'settings' && can('settings')) showSettings();
     else if (parts[0] === 'pm' && can('pmView')) (parts[1] && !(parts[1] === 'new' && !can('pmEdit')) ? openPm(parts[1]) : showPmList());
     else if (parts[0] === 'sched' && parts[1] && can('pmView')) openSched(parts[1]);
+    else if (parts[0] === 'hours' && parts[1] === 'stats' && can('hoursAll')) showHourStats(q.get('m'));
     else if (parts[0] === 'hours') showHours();
     else if (parts[0] === 'work') WorkList.show('list');
     else if (parts[0] === 'gantt') WorkList.show('gantt');
@@ -2181,27 +2182,33 @@
   let hrEntries = [];
   const newEntry = () => ({ code: '', cat: '', start: '', end: '', hours: '', note: '', auto: true });
 
+  // 預設只看本人;管理者與「工時統計(全員)」可切換人員、使用「統計」
+  function refreshWho() {
+    const who = $('hrWho');
+    who.hidden = $('hrStatsBtn').hidden = !can('hoursAll');
+    if (can('hoursAll')) {
+      const cur = who.value;
+      const me = myStaffName();
+      const names = [...new Set([...staffList().map((x) => x.name), ...hoursList().map((r) => r.name)].filter((n) => n && n !== me))]
+        .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+      who.innerHTML = '';
+      who.append(h('option', { value: '' }, me + '(本人)'), ...names.map((n) => h('option', { value: n }, n)));
+      who.value = names.includes(cur) ? cur : '';
+    }
+  }
   function showHours() {
     const m = $('hrMonth');
     if (!m.value) m.value = ssGet(HR_LS_MONTH) || curMonth();
-    const who = $('hrWho');
-    who.hidden = !can('hoursAll');
-    if (can('hoursAll')) {
-      const cur = who.value;
-      const names = new Set([...staffList().map((x) => x.name), ...hoursList().map((r) => r.name)].filter(Boolean));
-      who.innerHTML = '';
-      who.append(h('option', { value: '' }, '全部人員'), ...[...names].sort((a, b) => a.localeCompare(b, 'zh-Hant')).map((n) => h('option', { value: n }, n)));
-      who.value = names.has(cur) ? cur : '';
-    }
+    refreshWho();
     showView('hoursView', { title: '工時統計', sub: fileLine() });
     if (!hrEntries.length) resetHourForm(); else renderHourForm($('hrNameInput') && $('hrNameInput').value);
     renderHours();
   }
   function monthHours() {
     const mon = $('hrMonth').value;
-    const all = can('hoursAll'), who = $('hrWho').value;
-    return hoursList().filter((r) => String(r.start || '').startsWith(mon) &&
-      (all ? !who || r.name === who : r.email === myEmail() || (!r.email && r.name === myStaffName())));
+    const who = can('hoursAll') ? $('hrWho').value : '';
+    const mine = (r) => r.email === myEmail() || (!r.email && r.name === myStaffName());
+    return hoursList().filter((r) => String(r.start || '').startsWith(mon) && (who ? r.name === who : mine(r)));
   }
   function renderHours() {
     const recs = monthHours().sort((a, b) => String(b.start).localeCompare(String(a.start)));
@@ -2225,11 +2232,6 @@
           h('td', {}, h('b', {}, x.code || '(未指定)'), x.name ? h('small', {}, x.name) : ''),
           ...Hours.CATS.map((c) => h('td', { class: 'num' }, x.cat[c] ? fmtH(x.cat[c]) : '')),
           h('td', { class: 'num' }, h('b', {}, fmtH(x.total)))))))));
-    }
-    if (can('hoursAll') && !$('hrWho').value && recs.length) {
-      const byWho = new Map();
-      for (const r of recs) byWho.set(r.name || '(未填)', (byWho.get(r.name || '(未填)') || 0) + (Number(r.hours) || 0));
-      sum.append(h('div', { class: 'hr-people' }, ...[...byWho].sort((a, b) => b[1] - a[1]).map(([n, v]) => h('span', { class: 'chip' }, `${n} ${fmtH(v)}h`))));
     }
     const box = $('hrList');
     box.innerHTML = '';
@@ -2345,6 +2347,7 @@
     const mon = String(recs[0].start).slice(0, 7);
     if (mon !== $('hrMonth').value) { $('hrMonth').value = mon; ssSet(HR_LS_MONTH, mon); }
     resetHourForm();
+    refreshWho();
     renderHours();
   }
   async function deleteHour(r) {
@@ -2388,6 +2391,77 @@
     if (n) Hours.write(d.book, list);
     return n;
   }
+  // ---- 統計(全員) ----
+  const HR_STAT_COLS = [
+    { title: '專案代號', w: 14, kind: 'c' }, { title: '專案名稱', w: 34, kind: 'w' }, { title: '報工類別', w: 10, kind: 'c' },
+    { title: '部門', w: 12, kind: 'c' }, { title: '姓名', w: 12, kind: 'c' }, { title: '工時', w: 10, kind: 'n' },
+  ];
+  function hourStats(mon) {
+    const staff = staffList();
+    const deptOf = (r) => {
+      const st = staff.find((x) => x.name === r.name || (r.email && x.email && x.email.toLowerCase() === r.email));
+      return st ? st.dept || '' : '外包';
+    };
+    const m = new Map();
+    for (const r of hoursList()) {
+      if (!String(r.start || '').startsWith(mon)) continue;
+      const k = [r.code, r.cat, r.name].join('\u0001');
+      const x = m.get(k) || { code: r.code || '', pname: r.pname || (hourProj(r.code) || {}).name || '', cat: r.cat || '', dept: deptOf(r), name: r.name || '', hours: 0 };
+      x.hours += Number(r.hours) || 0;
+      m.set(k, x);
+    }
+    const catIdx = (c) => { const i = Hours.CATS.indexOf(c); return i < 0 ? 99 : i; };
+    return [...m.values()].sort((a, b) => Store.compareCode(b.code, a.code) || catIdx(a.cat) - catIdx(b.cat) ||
+      a.dept.localeCompare(b.dept, 'zh-Hant') || a.name.localeCompare(b.name, 'zh-Hant'));
+  }
+  async function askStatsMonth() {
+    const inp = h('input', { type: 'month', class: 'hr-ask-month' });
+    inp.value = $('hrMonth').value || curMonth();
+    const ok = await dialog('統計工時', h('div', { class: 'field' }, h('span', { class: 'flabel' }, '要統計哪一個月份?'), inp),
+      [{ label: '取消', value: false }, { label: '統計', value: true, cls: 'btn-primary' }]);
+    if (ok && inp.value) go('#/hours/stats?m=' + inp.value);
+  }
+  function showHourStats(mon) {
+    if (!/^\d{4}-\d{2}$/.test(mon || '')) mon = $('hrMonth').value || curMonth();
+    $('hsMonth').value = mon;
+    showView('hoursStatsView', { title: '工時統計(全員)', sub: fileLine(), back: '#/hours' });
+    const rows = hourStats(mon);
+    const total = rows.reduce((t, r) => t + r.hours, 0);
+    $('hsCount').textContent = rows.length ? `${mon.replace('-', '/')} 共 ${new Set(rows.map((r) => r.name)).size} 人、${new Set(rows.map((r) => r.code)).size} 個作業項目,合計 ${fmtH(total)} 小時` : '';
+    $('hsEmpty').hidden = !!rows.length;
+    $('hsExport').disabled = !rows.length;
+    const box = $('hsTable');
+    box.innerHTML = '';
+    if (!rows.length) return;
+    box.append(h('table', { class: 'hr-table hs-table' },
+      // 畫面上專案代號與名稱合併一欄(手機不需左右捲動);匯出仍分開
+      h('thead', {}, h('tr', {}, h('th', {}, '專案代號 / 名稱'), h('th', {}, '報工類別'), h('th', {}, '部門'), h('th', {}, '姓名'), h('th', { class: 'num' }, '工時'))),
+      h('tbody', {}, ...rows.map((r) => h('tr', {}, h('td', {}, h('b', {}, r.code), r.pname ? h('small', {}, r.pname) : ''), h('td', {}, r.cat),
+        h('td', { class: r.dept === '外包' ? 'hs-out' : '' }, r.dept), h('td', {}, r.name), h('td', { class: 'num' }, fmtH(r.hours))))),
+      h('tfoot', {}, h('tr', {}, h('td', { colspan: '4' }, '合計'), h('td', { class: 'num' }, fmtH(total))))));
+  }
+  async function saveXlsx(bytes, name) {
+    const file = new File([bytes], name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    // 手機(觸控裝置)優先用分享選單,可直接存到「檔案」或傳給別人
+    if (navigator.canShare && matchMedia('(pointer: coarse)').matches && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = h('a', { href: URL.createObjectURL(file), download: name });
+    document.body.append(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    toast('已匯出 ' + name);
+  }
+  $('hrStatsBtn').onclick = askStatsMonth;
+  $('hsMonth').onchange = () => { if ($('hsMonth').value) replaceHash('#/hours/stats?m=' + $('hsMonth').value); showHourStats($('hsMonth').value); };
+  $('hsExport').onclick = () => {
+    const mon = $('hsMonth').value;
+    const rows = hourStats(mon);
+    if (!rows.length) return toast('這個月份沒有工時紀錄');
+    const total = rows.reduce((t, r) => t + r.hours, 0);
+    const data = [...rows.map((r) => [r.code, r.pname, r.cat, r.dept, r.name, Math.round(r.hours * 10) / 10]), ['合計', '', '', '', '', Math.round(total * 10) / 10]];
+    saveXlsx(Exporter.table(HR_STAT_COLS, data, `${mon.replace('-', '/')} 工時統計`, mon + ' 工時統計'), `工時統計_${mon.replace('-', '')}.xlsx`);
+  };
   $('hrMonth').onchange = () => { ssSet(HR_LS_MONTH, $('hrMonth').value); renderHours(); };
   $('hrWho').onchange = renderHours;
   $('hrAddEntry').onclick = () => {
