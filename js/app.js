@@ -75,6 +75,14 @@
       }
       S.fileId = f.id;
       await reload();
+      // 只允許「設定 → 公司人員」名單中有 E-Mail 的人(管理者除外)
+      if (!isAdmin() && !staffOfEmail(myEmail())) {
+        S.data = S.meta = S.fileId = null;
+        $('welcomeMsg').textContent = `帳號 ${myEmail()} 不在公司人員名單中,無法使用。請聯絡管理者在「設定 → 公司人員」加入您的 E-Mail。`;
+        $('signInBtn').textContent = '改用其他帳號登入';
+        $('signInBtn').onclick = () => { Drive.signOut(); location.reload(); };
+        return;
+      }
       S.ready = true;
       applyPerms();
       WorkList.available().then((ok) => { $('navWork').hidden = $('navGantt').hidden = !ok; });
