@@ -187,6 +187,11 @@
     $('navPm').hidden = !can('pmView');
     $('addRemain').hidden = !can('remain');
     document.body.classList.toggle('pm-ro', !can('pmEdit'));
+    // 側邊選單顯示本帳號目前生效的權限與資料版本(方便確認權限是否已套用)
+    const granted = Perms.KEYS.filter((k) => can(k.key)).map((k) => k.label);
+    $('permLine').textContent = (isAdmin() ? '管理者(全部權限)' : '權限:' + (granted.join('、') || '一般')) +
+      (S.meta ? `
+資料:${fileLine().split(' · ')[1] || ''}` : '');
   }
   function pmLock() {
     if (can('pmEdit')) return;
