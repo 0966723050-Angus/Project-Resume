@@ -6,7 +6,7 @@
  *       更新程式後:部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署(網址不變)
  *       加速:在編輯器選函式 installWarmTrigger → 執行一次(建立每 10 分鐘預熱排程)
  *       備份:在編輯器選函式 installDailyBackup → 執行一次(建立每日 02:00 備份排程並立即備份)
- *       工時:在編輯器選函式 installHoursNotice → 執行一次(每月第一個上班日 09:00 寄未提報提醒;testHoursNotice 只寄名單給管理者)
+ *       工時:在編輯器選函式 installHoursNotice → 執行一次(每月第一個上班日 09:00 由釘釘機器人傳未提報提醒;testHoursNotice 只寄預覽 E-Mail 給管理者)
  *       日曆:在編輯器選函式 syncCalendar → 執行一次(授權日曆),再部署新版本;之後近期工作項目每次存檔自動同步
  * 安全:只回傳「履歷編號 + 分享碼」都相符的那一份履歷;圖片/附件也只限該履歷中有列出的檔案。
  *
@@ -266,11 +266,13 @@ function sendOverdue(always) {
 }
 
 // ── 每月工時未提報通知 ──
-// 啟用:在編輯器選函式 installHoursNotice → 執行一次。測試:執行 testHoursNotice(只把名單寄給管理者,不寄給同仁)
+// 啟用:在編輯器選函式 installHoursNotice → 執行一次。測試:執行 testHoursNotice(訊息只寄 E-Mail 給管理者預覽,不傳到釘釘)
 // 每月第一個上班日 09:00 檢查「上個月」每位公司人員(有 E-Mail、權限表未勾「免提報工時」)的未提報上班日,
-// 有缺的人各寄一封提醒(請於 2 天內補齊),並寄一份名單給管理者;同一個月只寄一次
-// 上班日依行政院人事行政總處行事曆(TaiwanCalendar,國定假日不算、補班算);抓不到時只排除週六日
-var HOURS_SHEET = '工時', STAFF_SHEET = '公司人員', PERM_SHEET = '權限', LEAVE_SHEET = '請假';
+// 由專案履歷的釘釘機器人(DINGTALK_WEBHOOK)傳一則訊息到群組,列出未提報同仁與日期(請於 2 天內補齊);
+// E-Mail 帳號是手機號碼(09xxxxxxxx@)的同仁會被 @;同一個月只傳一次
+// 上班日依行政院人事行政總處行事曆(TaiwanCalendar,國定假日不算、補班算;抓不到時只排除週六日),
+// 另排除「公司假日」工作表(颱風假等)與各人「請假」工作表登記的日子
+var HOURS_SHEET = '工時', STAFF_SHEET = '公司人員', PERM_SHEET = '權限', LEAVE_SHEET = '請假', OFF_SHEET = '公司假日';
 var HOURS_DEADLINE_DAYS = 2;
 var TW_CAL_URL = 'https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/';
 
@@ -286,7 +288,7 @@ function hoursNoticePlan() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'hoursNotice') ScriptApp.deleteTrigger(t); });
   var today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
   if (PropertiesService.getScriptProperties().getProperty('HOURS_NOTICE_SENT') === prevMonthOf(today)) return;
-  var days = workdaysOf(today.slice(0, 7), twHolidays(+today.slice(0, 4)));
+  var days = workdaysOf(today.slice(0, 7), twHolidays(+today.slice(0, 4)), offDaysOf(getFile()));
   if (days[0] !== today) return;
   var at = new Date(today + 'T09:00:00+08:00');
   if (at.getTime() > Date.now()) ScriptApp.newTrigger('hoursNotice').timeBased().at(at).create();
@@ -306,33 +308,20 @@ function sendHoursNotice(test) {
   try { permGrid = readGrid(file, PERM_SHEET); } catch (err) { /* 還沒有權限表 */ }
   var leaveGrid = null;
   try { leaveGrid = readGrid(file, LEAVE_SHEET); } catch (err) { /* 還沒有人登記請假 */ }
-  var list = missingByPerson(readGrid(file, HOURS_SHEET), readGrid(file, STAFF_SHEET), permGrid, workdaysOf(mon, hol), leaveGrid);
-  var monText = mon.replace('-', '/');
-  var dl = new Date(Date.now() + HOURS_DEADLINE_DAYS * 86400000);
-  var deadline = Utilities.formatDate(dl, TZ, 'M/d');
-  var md = function (d) { return +d.slice(5, 7) + '/' + +d.slice(8); };
-  if (!test) list.forEach(function (p) {
-    var dates = p.miss.map(md).join('、');
+  var list = missingByPerson(readGrid(file, HOURS_SHEET), readGrid(file, STAFF_SHEET), permGrid, workdaysOf(mon, hol, offDaysOf(file)), leaveGrid);
+  var deadline = Utilities.formatDate(new Date(Date.now() + HOURS_DEADLINE_DAYS * 86400000), TZ, 'M/d');
+  var msg = hoursNoticeMarkdown(mon, list, deadline, APP_URL + '#/hours') + (hol ? '' : '\n\n(行事曆無法取得,只排除週六日)');
+  if (test) {
     MailApp.sendEmail({
-      to: p.email,
-      subject: '【工時提報提醒】' + monText + ' 尚有 ' + p.miss.length + ' 天未提報',
-      body: p.name + ' 您好:\n\n系統檢查 ' + monText + ' 的工時,以下上班日尚未提報(共 ' + p.miss.length + ' 天):\n' + dates +
-        '\n\n請於 ' + HOURS_DEADLINE_DAYS + ' 天內(' + deadline + ' 前)完成工時提報。\n' + APP_URL + '#/hours\n\n(本信由系統自動發送)',
-      htmlBody: '<p>' + htmlEsc(p.name) + ' 您好:</p><p>系統檢查 <b>' + monText + '</b> 的工時,以下上班日尚未提報(共 <b>' + p.miss.length + '</b> 天):</p>' +
-        '<p>' + htmlEsc(dates) + '</p><p>請於 <b>' + HOURS_DEADLINE_DAYS + ' 天內(' + deadline + ' 前)</b>完成工時提報:<a href="' + APP_URL + '#/hours">ATK專案履歷 → 工時統計</a></p>' +
-        '<p style="color:#888">(本信由系統自動發送)</p>',
+      to: NOTIFY_TO || Session.getEffectiveUser().getEmail(),
+      subject: '[測試,未傳到釘釘] 【工時提報提醒】' + mon.replace('-', '/') + ' 共 ' + list.length + ' 人未完成',
+      body: msg + '\n\n會 @ 的手機:' + (mobilesOf(list).join('、') || '(無)'),
       name: 'ATK專案履歷',
     });
-  });
-  var summary = list.length ? list.map(function (p) { return p.name + '(' + p.email + '):' + p.miss.length + ' 天 — ' + p.miss.map(md).join('、'); }).join('\n')
-    : '全員都已完成提報';
-  MailApp.sendEmail({
-    to: NOTIFY_TO || Session.getEffectiveUser().getEmail(),
-    subject: (test ? '[測試,未寄給同仁] ' : '') + '【工時未提報名單】' + monText + ' 共 ' + list.length + ' 人' + (hol ? '' : '(行事曆無法取得,只排除週六日)'),
-    body: summary + '\n\n' + (test ? '這是測試:沒有寄信給同仁。' : '已寄提醒信給以上同仁,期限 ' + deadline + '。') + '\n' + APP_URL + '#/hours',
-    name: 'ATK專案履歷',
-  });
-  if (!test) props.setProperty('HOURS_NOTICE_SENT', mon);
+    return;
+  }
+  if (list.length) dingPost('工時提報提醒', msg, mobilesOf(list));
+  props.setProperty('HOURS_NOTICE_SENT', mon);
 }
 // 行政院人事行政總處行事曆的假日(yyyy-mm-dd);抓不到回傳 null(改用週六日)
 function twHolidays(year) {
@@ -344,6 +333,18 @@ function twHolidays(year) {
 }
 
 // ---- 以下為純資料處理(不呼叫 GAS API,可在瀏覽器測試) ----
+// 釘釘訊息(markdown):未提報同仁、天數與日期;手機號碼帳號加上 @ 才會通知到本人
+function hoursNoticeMarkdown(mon, list, deadline, url) {
+  var md = function (d) { return +d.slice(5, 7) + '/' + +d.slice(8); };
+  var lines = list.map(function (p) {
+    var mob = mobileOf(p.email);
+    return '- ' + p.name + (mob ? ' @' + mob : '') + ':' + p.miss.length + ' 天(' + p.miss.map(md).join('、') + ')';
+  });
+  return '### 【工時提報提醒】' + mon.replace('-', '/') + '\n\n以下同仁尚有工時未提報,請於 **' + HOURS_DEADLINE_DAYS + ' 天內(' + deadline + ' 前)**完成:\n\n' +
+    lines.join('\n') + '\n\n若當天請假,請在工時統計頁的方框打勾。[前往工時統計](' + url + ')';
+}
+function mobileOf(email) { var m = /^(09\d{8})@/.exec(String(email || '')); return m ? m[1] : ''; }
+function mobilesOf(list) { return list.map(function (p) { return mobileOf(p.email); }).filter(Boolean); }
 function holidaySet(list) {
   var set = {};
   list.forEach(function (d) { if (d.isHoliday) set[d.date.slice(0, 4) + '-' + d.date.slice(4, 6) + '-' + d.date.slice(6, 8)] = true; });
@@ -354,13 +355,21 @@ function prevMonthOf(ymd) {
   if (!m) { y--; m = 12; }
   return y + '-' + pad2(m);
 }
-function workdaysOf(mon, hol) {
+// off:公司假日(颱風假等){ 'yyyy-mm-dd': true }
+function workdaysOf(mon, hol, off) {
   var y = +mon.slice(0, 4), m = +mon.slice(5, 7), out = [];
   for (var d = new Date(Date.UTC(y, m - 1, 1)); d.getUTCMonth() === m - 1; d = new Date(d.getTime() + 86400000)) {
     var s = d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate());
-    if (hol ? !hol[s] : d.getUTCDay() % 6 !== 0) out.push(s);
+    if ((hol ? !hol[s] : d.getUTCDay() % 6 !== 0) && !(off && off[s])) out.push(s);
   }
   return out;
+}
+function offDaysFrom(grid) {
+  var set = {};
+  if (!grid) return set;
+  var t = tableOf(grid);
+  t.rows.forEach(function (row) { var n = cellSerial(row, t.col['日期']); if (n != null) set[serialYMD(n).replace(/\//g, '-')] = true; });
+  return set;
 }
 function isYes(v) { return /^(✔|☑|✅|v|y|是|true|1)/i.test(String(v || '').trim()); }
 // 每位公司人員(有 E-Mail、未勾免提報工時)在 days 中沒有任何工時紀錄的日子;每筆紀錄從開始日到結束日都算有提報,
@@ -579,28 +588,34 @@ function overdueHtml(r) {
 //   DINGTALK_SECRET  = 機器人安全設定選「加簽」時的 SEC… 密鑰(選「自訂關鍵詞」則不用填,關鍵詞請用「專案履歷」)
 // Webhook 不寫在程式裡(本檔放在公開的 GitHub)。訊息內容由伺服器依履歷產生,同一份履歷 30 秒內只送一次
 function dingSend(res, key) {
+  var cache = CacheService.getScriptCache();
+  if (cache.get('ding_' + res.id)) throw new Error('剛剛已傳送過,請稍後再試');
+  var title = resumeTitleOf(res);
+  var url = APP_URL + '#/v/' + encodeURIComponent(res.id) + '?k=' + encodeURIComponent(key);
+  dingPost(title, '[' + title.replace(/[\[\]]/g, '') + '](' + url + ')');
+  cache.put('ding_' + res.id, '1', 30);
+  return { ok: true, title: title };
+}
+// 由釘釘群組機器人傳 markdown 訊息;atMobiles:要 @ 的手機號碼(文字中也要有 @號碼)
+function dingPost(title, text, atMobiles) {
   var props = PropertiesService.getScriptProperties();
   var hook = props.getProperty('DINGTALK_WEBHOOK');
   if (!hook) throw new Error('尚未設定釘釘機器人(DINGTALK_WEBHOOK)');
-  var cache = CacheService.getScriptCache();
-  if (cache.get('ding_' + res.id)) throw new Error('剛剛已傳送過,請稍後再試');
   var secret = props.getProperty('DINGTALK_SECRET');
   if (secret) {
     var ts = String(Date.now());
     var sign = Utilities.base64Encode(Utilities.computeHmacSha256Signature(ts + '\n' + secret, secret));
     hook += '&timestamp=' + ts + '&sign=' + encodeURIComponent(sign);
   }
-  var title = resumeTitleOf(res);
-  var url = APP_URL + '#/v/' + encodeURIComponent(res.id) + '?k=' + encodeURIComponent(key);
-  var resp = UrlFetchApp.fetch(hook, {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    payload: JSON.stringify({ msgtype: 'markdown', markdown: { title: title, text: '[' + title.replace(/[\[\]]/g, '') + '](' + url + ')' } }),
-  });
+  var body = { msgtype: 'markdown', markdown: { title: title, text: text } };
+  if (atMobiles && atMobiles.length) body.at = { atMobiles: atMobiles, isAtAll: false };
+  var resp = UrlFetchApp.fetch(hook, { method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify(body) });
   var j = {};
   try { j = JSON.parse(resp.getContentText()); } catch (err) {}
   if (j.errcode !== 0) throw new Error('釘釘拒絕:' + (j.errmsg || resp.getResponseCode()));
-  cache.put('ding_' + res.id, '1', 30);
-  return { ok: true, title: title };
+}
+function offDaysOf(file) {
+  try { return offDaysFrom(readGrid(file, OFF_SHEET)); } catch (err) { return {}; } // 還沒有公司假日工作表
 }
 // 第一次使用前在編輯器執行一次:授權「連線到外部服務」(只連線測試,不會發訊息到群組)
 function authorizeDingtalk() {

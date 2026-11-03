@@ -102,14 +102,15 @@
   }
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   // 某月(yyyy-mm)到 before(不含,yyyy-mm-dd)為止的上班日;當天 23:59 前還能提報,所以不含今天
-  async function workdays(mon, before) {
+  // off:公司另外公告的全員放假日(颱風假等,Set<'yyyy-mm-dd'>)
+  async function workdays(mon, before, off) {
     const [y, m] = mon.split('-').map(Number);
     const hol = await holidays(y);
     const out = [];
     for (let d = new Date(y, m - 1, 1); d.getMonth() === m - 1; d.setDate(d.getDate() + 1)) {
       const s = iso(d);
       if (before && s >= before) break;
-      if (hol ? !hol.has(s) : d.getDay() % 6 !== 0) out.push(s);
+      if ((hol ? !hol.has(s) : d.getDay() % 6 !== 0) && !(off && off.has(s))) out.push(s);
     }
     return { days: out, exact: !!hol };
   }
@@ -156,5 +157,39 @@
     if (isNew) for (const p of ['xl/workbook.xml', 'xl/_rels/workbook.xml.rels', '[Content_Types].xml']) { delete book.docs[p]; book.touched.delete(p); }
   }
 
-  window.Hours = { SHEET, FIELDS, CATS, read, write, diffHours, workdays, reportedDays, readLeave, writeLeave };
+  // ---- 公司假日(「公司假日」工作表:日期 | 說明 | 設定者):颱風假/特定假日,全員免提報 ----
+  const OFF_SHEET = '公司假日';
+  const OFF_FIELDS = [{ key: 'date', label: '日期', w: 12 }, { key: 'note', label: '說明', w: 24 }, { key: 'by', label: '設定者', w: 28 }];
+  function readSheet(book, sheet, fields) {
+    const g = WorkIO.grid(book, sheet);
+    if (!g) return [];
+    const colOf = {};
+    for (let i = 0; i < 10; i++) { const f = fields.find((x) => x.label === String(g.get(col(i) + 1) ?? '').trim()); if (f && !colOf[f.key]) colOf[f.key] = col(i); }
+    const out = [];
+    for (let r = 2; r <= g.lastRow; r++) {
+      const p = {};
+      fields.forEach((f) => { const v = colOf[f.key] ? g.get(colOf[f.key] + r) : undefined; p[f.key] = v; });
+      const d = p.date;
+      p.date = typeof d === 'number' ? Store.serialToDT(d).slice(0, 10) : String(d ?? '').trim().replace(/\//g, '-').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date)) continue;
+      fields.forEach((f) => { if (f.key !== 'date') p[f.key] = String(p[f.key] ?? '').trim(); });
+      out.push(p);
+    }
+    return out;
+  }
+  function writeSheet(book, sheet, fields, rows) {
+    const head = `<row r="1">${fields.map((f, i) => cell(col(i) + 1, f.label)).join('')}</row>`;
+    const body = rows.map((p, n) => `<row r="${n + 2}">${fields.map((f, i) => cell(col(i) + (n + 2), p[f.key])).join('')}</row>`).join('');
+    const cols = fields.map((f, i) => `<col min="${i + 1}" max="${i + 1}" width="${f.w}" customWidth="1"/>`).join('');
+    const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="${NS}">` +
+      `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
+      `<sheetFormatPr defaultRowHeight="20"/><cols>${cols}</cols><sheetData>${head}${body}</sheetData></worksheet>`;
+    const isNew = !book.sheets[sheet];
+    book.files[WorkIO.ensureSheetPath(book.files, sheet)] = new TextEncoder().encode(xml);
+    if (isNew) for (const p of ['xl/workbook.xml', 'xl/_rels/workbook.xml.rels', '[Content_Types].xml']) { delete book.docs[p]; book.touched.delete(p); }
+  }
+  const readOff = (book) => readSheet(book, OFF_SHEET, OFF_FIELDS);
+  const writeOff = (book, list) => writeSheet(book, OFF_SHEET, OFF_FIELDS, list.slice().sort((a, b) => a.date.localeCompare(b.date)));
+
+  window.Hours = { SHEET, FIELDS, CATS, read, write, diffHours, workdays, reportedDays, readLeave, writeLeave, readOff, writeOff };
 })();

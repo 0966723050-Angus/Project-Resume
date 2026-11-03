@@ -2244,7 +2244,7 @@
   // 預設只看本人;管理者與「工時統計(全員)」可切換人員、使用「統計」
   function refreshWho() {
     const who = $('hrWho');
-    who.hidden = $('hrStatsBtn').hidden = !can('hoursAll');
+    who.hidden = $('hrStatsBtn').hidden = $('hrOffBtn').hidden = !can('hoursAll');
     if (can('hoursAll')) {
       const cur = who.value;
       const me = myStaffName();
@@ -2278,7 +2278,8 @@
     const who = can('hoursAll') ? $('hrWho').value : '';
     const name = who || myStaffName();
     const email = who ? ((staffList().find((x) => x.name === who) || {}).email || '') : myEmail();
-    const { days, exact } = await Hours.workdays(mon, todayISO());
+    const off = new Set((S.data ? Hours.readOff(S.data.book) : []).map((x) => x.date));
+    const { days, exact } = await Hours.workdays(mon, todayISO(), off);
     const el = $('hrMissing');
     if (seq !== missSeq || !el) return;
     el.innerHTML = '';
@@ -2303,6 +2304,42 @@
       h('b', {}, miss.length ? `未提報 ${miss.length} 天` : '✅ 已全部提報'), open.length ? h('span', { class: 'hr-miss-sep' }, ':') : null, ...boxes),
       open.length ? h('small', { class: 'hr-miss-note' }, '若當天請假,請於方框打勾') : null);
   }
+  // 颱風/特定假日(限工時統計(全員)):以日曆選日期,全員放假、不算未提報(存「公司假日」工作表)
+  async function editOffDays() {
+    const date = h('input', { type: 'date', class: 'hr-ask-month', 'aria-label': '放假日期' });
+    date.value = todayISO();
+    const note = h('input', { type: 'text', class: 'hr-ask-month', placeholder: '說明(例如:颱風假)', 'aria-label': '說明' });
+    const list = h('div', { class: 'off-list' });
+    const draw = () => {
+      list.innerHTML = '';
+      const rows = (S.data ? Hours.readOff(S.data.book) : []).sort((a, b) => b.date.localeCompare(a.date));
+      if (!rows.length) return list.append(h('div', { class: 'empty small' }, '尚未設定'));
+      for (const r of rows) list.append(h('div', { class: 'off-item' }, h('b', {}, r.date.replace(/-/g, '/')), h('span', {}, r.note || ''),
+        h('button', { type: 'button', class: 'del-btn', 'aria-label': '刪除 ' + r.date, onclick: () => saveOff(r.date, null) }, '✕')));
+    };
+    const saveOff = async (d, text) => {
+      try {
+        await commit(text == null ? '刪除假日…' : '設定假日…', (x) => {
+          const rows = Hours.readOff(x.book).filter((r) => r.date !== d);
+          if (text != null) rows.push({ date: d, note: text, by: myEmail() });
+          Hours.writeOff(x.book, rows);
+        });
+        toast(text == null ? `已刪除 ${d.replace(/-/g, '/')}` : `✅ ${d.replace(/-/g, '/')} 設為全員放假`);
+      } catch (err) { toast('儲存失敗:' + errMsg(err), 6000); }
+      draw();
+      renderHours();
+    };
+    const add = h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => {
+      if (!date.value) return toast('請選擇日期');
+      saveOff(date.value, note.value.trim() || '公司假日');
+      note.value = '';
+    } }, '＋ 設定');
+    draw();
+    await dialog('颱風/特定假日', h('div', {},
+      h('div', { class: 'hint' }, '設定的日期全員放假,不算未提報(月初通知也排除)。'),
+      h('div', { class: 'off-add' }, date, note, add), list), [{ label: '關閉', value: true, cls: 'btn-primary' }]);
+  }
+  $('hrOffBtn').onclick = editOffDays;
   async function setLeave(who, date, on) {
     try {
       await commit(on ? '登記請假…' : '取消請假…', (d) => {
