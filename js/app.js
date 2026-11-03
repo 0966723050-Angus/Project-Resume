@@ -2855,6 +2855,8 @@
     }
     panel.addEventListener('toggle', async () => {
       if (!panel.open || draft) return;
+      // 先重新下載檔案,顯示雲端上實際存的權限(避免頁面開太久看到舊資料)
+      await reload().catch(() => {});
       const people = [];
       let note = '';
       for (const id of [S.fileId, CFG.WORK.FILE_ID]) {
