@@ -2807,6 +2807,9 @@
     box.innerHTML = '';
     const body = h('div', {}, h('div', { class: 'empty small' }, '展開後載入人員名單…'));
     let draft = null, savedSnap = '';
+    const orig = new Map(); // 展開時每人的原始權限;儲存時只寫入有改動的人
+    const keyStr = (p) => Perms.KEYS.map((k) => (p[k.key] ? 1 : 0)).join('');
+    const remember = () => { orig.clear(); draft.forEach((p) => orig.set(p.email, keyStr(p))); savedSnap = snapOf(draft); };
     // 要寫入的權限(只留有勾選的人);與 savedSnap 比較判斷是否還沒儲存
     const toEntries = (list) => list.filter((p) => Perms.KEYS.some((k) => p[k.key]))
       .map((p) => Object.fromEntries([['email', p.email], ...Perms.KEYS.map((k) => [k.key, !!p[k.key]])]));
@@ -2841,11 +2844,22 @@
         dirty ? h('span', { class: 'perm-dirty' }, '⚠️ 權限已變更,尚未儲存(按「儲存權限」後才生效)') : null,
         h('button', { type: 'button', class: 'btn btn-primary btn-sm' + (dirty ? ' dirty' : ''), onclick: savePerms }, '儲存權限')));
     };
+    // 以雲端最新的權限表為準,只套用這次有改動的人(別人同時改的、或畫面開太久的舊資料都不會被覆蓋)
     async function savePerms() {
-      const entries = permEntries();
+      const changed = draft.filter((p) => keyStr(p) !== orig.get(p.email));
       try {
-        await commit('儲存權限…', (d) => { Perms.write(d.book, entries); });
-        savedSnap = snapOf(draft);
+        const merged = await commit('儲存權限…', (d) => {
+          const cur = Perms.read(d.book);
+          if (!cur) { Perms.write(d.book, permEntries()); return toEntries(draft); } // 第一次建立「權限」工作表
+          const map = new Map(cur.map((e) => [e.email, e]));
+          for (const p of changed) map.set(p.email, { email: p.email, ...Object.fromEntries(Perms.KEYS.map((k) => [k.key, !!p[k.key]])) });
+          const out = toEntries([...map.values()]);
+          Perms.write(d.book, out);
+          return out;
+        });
+        const byEmail = new Map(merged.map((e) => [e.email, e]));
+        draft.forEach((p) => { const e = byEmail.get(p.email) || {}; Perms.KEYS.forEach((k) => { p[k.key] = !!e[k.key]; }); });
+        remember();
         renderRows();
         applyPerms();
         toast('✅ 權限已儲存');
@@ -2880,7 +2894,8 @@
       for (const e of staff.keys()) if (!byEmail.has(e)) byEmail.set(e, { email: e, role: '' });
       draft = [...byEmail.values()].map((p) => Object.assign(p, { who: staff.get(p.email) || {} }))
         .sort((a, b) => rank(a.role) - rank(b.role) || (a.who.name || a.email).localeCompare(b.who.name || b.email, 'zh-Hant'));
-      savedSnap = snapOf(saved || []);
+      remember();
+      if (!saved) savedSnap = snapOf([]); // 還沒有「權限」工作表:預設值也要按儲存才會建立
       renderRows();
       if (note) body.prepend(h('div', { class: 'hint' }, note));
     });
