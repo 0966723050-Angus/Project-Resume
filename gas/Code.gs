@@ -269,7 +269,7 @@ function sendOverdue(always) {
 // 啟用:在編輯器選函式 installHoursNotice → 執行一次。測試:執行 testHoursNotice(訊息只寄 E-Mail 給管理者預覽,不傳到釘釘)
 // 每月第一個上班日 09:00 檢查「上個月」每位公司人員(有 E-Mail、權限表未勾「免提報工時」)的未提報上班日,
 // 由專案履歷的釘釘機器人(DINGTALK_WEBHOOK)傳一則訊息到群組,列出未提報同仁與日期(請於 2 天內補齊);
-// E-Mail 帳號是手機號碼(09xxxxxxxx@)的同仁會被 @;同一個月只傳一次
+// 訊息只列姓名(不 @);同一個月只傳一次
 // 上班日依行政院人事行政總處行事曆(TaiwanCalendar,國定假日不算、補班算;抓不到時只排除週六日),
 // 另排除「公司假日」工作表(颱風假等)與各人「請假」工作表登記的日子
 var HOURS_SHEET = '工時', STAFF_SHEET = '公司人員', PERM_SHEET = '權限', LEAVE_SHEET = '請假', OFF_SHEET = '公司假日';
@@ -315,12 +315,12 @@ function sendHoursNotice(test) {
     MailApp.sendEmail({
       to: NOTIFY_TO || Session.getEffectiveUser().getEmail(),
       subject: '[測試,未傳到釘釘] 【工時提報提醒】' + mon.replace('-', '/') + ' 共 ' + list.length + ' 人未完成',
-      body: msg + '\n\n會 @ 的手機:' + (mobilesOf(list).join('、') || '(無)'),
+      body: msg,
       name: 'ATK專案履歷',
     });
     return;
   }
-  if (list.length) dingPost('工時提報提醒', msg, mobilesOf(list));
+  if (list.length) dingPost('工時提報提醒', msg);
   props.setProperty('HOURS_NOTICE_SENT', mon);
 }
 // 行政院人事行政總處行事曆的假日(yyyy-mm-dd);抓不到回傳 null(改用週六日)
@@ -333,18 +333,13 @@ function twHolidays(year) {
 }
 
 // ---- 以下為純資料處理(不呼叫 GAS API,可在瀏覽器測試) ----
-// 釘釘訊息(markdown):未提報同仁、天數與日期;手機號碼帳號加上 @ 才會通知到本人
+// 釘釘訊息(markdown):未提報同仁姓名、天數與日期
 function hoursNoticeMarkdown(mon, list, deadline, url) {
   var md = function (d) { return +d.slice(5, 7) + '/' + +d.slice(8); };
-  var lines = list.map(function (p) {
-    var mob = mobileOf(p.email);
-    return '- ' + p.name + (mob ? ' @' + mob : '') + ':' + p.miss.length + ' 天(' + p.miss.map(md).join('、') + ')';
-  });
+  var lines = list.map(function (p) { return '- ' + p.name + ':' + p.miss.length + ' 天(' + p.miss.map(md).join('、') + ')'; });
   return '### 【工時提報提醒】' + mon.replace('-', '/') + '\n\n以下同仁尚有工時未提報,請於 **' + HOURS_DEADLINE_DAYS + ' 天內(' + deadline + ' 前)**完成:\n\n' +
     lines.join('\n') + '\n\n若當天請假,請在工時統計頁的方框打勾。[前往工時統計](' + url + ')';
 }
-function mobileOf(email) { var m = /^(09\d{8})@/.exec(String(email || '')); return m ? m[1] : ''; }
-function mobilesOf(list) { return list.map(function (p) { return mobileOf(p.email); }).filter(Boolean); }
 function holidaySet(list) {
   var set = {};
   list.forEach(function (d) { if (d.isHoliday) set[d.date.slice(0, 4) + '-' + d.date.slice(4, 6) + '-' + d.date.slice(6, 8)] = true; });
