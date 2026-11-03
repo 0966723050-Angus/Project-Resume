@@ -148,5 +148,46 @@
     return zip(sheet, styles, 'Sheet1');
   }
 
-  window.Exporter = { build, table, erp };
+  // 工時明細(一筆紀錄一列):第 1 列淺藍表頭 + 篩選鈕,凍結表頭;日期顯示 m/d
+  // rows = [{ month, date: 'yyyy-mm-dd', name, dept, cat, code, pname, hours, note }]
+  const DETAIL_COLS = [['月份', 8, 'n'], ['日期', 10, 'd'], ['姓名', 12, 'c'], ['部門', 11, 'c'], ['報工類別', 11, 'c'],
+    ['專案代號', 13, 'c'], ['作業項目', 26, 'c'], ['工時', 9, 'n'], ['備註說明', 48, 'w']];
+  function detail(rows) {
+    const n = rows.length + 1, last = idxToCol(DETAIL_COLS.length);
+    let xml = '<row r="1" ht="36" customHeight="1">' + DETAIL_COLS.map(([t], i) => `<c r="${idxToCol(i + 1)}1" s="1" t="inlineStr"><is><t>${escXml(t)}</t></is></c>`).join('') + '</row>';
+    rows.forEach((x, k) => {
+      const r = k + 2;
+      const vals = [x.month, x.date, x.name, x.dept, x.cat, x.code, x.pname, Math.round(x.hours * 10) / 10, x.note];
+      xml += `<row r="${r}" ht="24" customHeight="1">` + DETAIL_COLS.map(([, , kind], i) => {
+        const ref = idxToCol(i + 1) + r, v = vals[i] ?? '', st = kind === 'w' ? 4 : 2;
+        if (v === '') return `<c r="${ref}" s="${st}"/>`;
+        if (kind === 'd') return `<c r="${ref}" s="3"><v>${serial(v)}</v></c>`;
+        if (kind === 'n' && Number.isFinite(Number(v))) return `<c r="${ref}" s="2"><v>${Number(v)}</v></c>`;
+        return `<c r="${ref}" s="${st}" t="inlineStr"><is><t xml:space="preserve">${escXml(v)}</t></is></c>`;
+      }).join('') + '</row>';
+    });
+    const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${last}${n}"/>
+<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+<sheetFormatPr defaultRowHeight="20"/><cols>${DETAIL_COLS.map(([, w], i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>
+<sheetData>${xml}</sheetData><autoFilter ref="A1:${last}${n}"/></worksheet>`;
+    const bd = '<left style="dotted"><color rgb="FF808080"/></left><right style="dotted"><color rgb="FF808080"/></right><top style="thin"><color rgb="FFBFBFBF"/></top><bottom style="thin"><color rgb="FFBFBFBF"/></bottom><diagonal/>';
+    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="1"><numFmt numFmtId="177" formatCode="m/d"/></numFmts>
+<fonts count="2"><font><sz val="12"/><name val="新細明體"/><family val="1"/><charset val="136"/></font><font><b/><sz val="12"/><name val="新細明體"/><family val="1"/><charset val="136"/></font></fonts>
+<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFCCEEFF"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border>${bd}</border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="5">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="177" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+    return zip(sheet, styles, '工時明細', `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'工時明細'!$A$1:$${last}$${n}</definedName></definedNames>`);
+  }
+
+  window.Exporter = { build, table, erp, detail };
 })();

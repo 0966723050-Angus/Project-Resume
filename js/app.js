@@ -180,7 +180,9 @@
     if (permCache.data !== S.data) permCache = { data: S.data, list: (S.data && Perms.read(S.data.book)) || null };
     return permCache.list;
   }
-  const can = (key) => isAdmin() || (permList() || []).some((p) => p.email === myEmail() && p[key]);
+  const isFlag = (key) => !!(Perms.KEYS.find((k) => k.key === key) || {}).flag; // 身分註記(例如免提報工時):管理者不自動擁有
+  const hasPerm = (email, key) => (permList() || []).some((p) => p.email === String(email || '').toLowerCase() && p[key]);
+  const can = (key) => (isAdmin() && !isFlag(key)) || hasPerm(myEmail(), key);
   // 依權限顯示側邊選單;專案管理「只能檢視」時鎖住表單(body.pm-ro)
   function applyPerms() {
     $('navSettings').hidden = !can('settings');
@@ -2267,6 +2269,26 @@
     const mine = (r) => r.email === myEmail() || (!r.email && r.name === myStaffName());
     return hoursList().filter((r) => String(r.start || '').startsWith(mon) && (who ? r.name === who : mine(r)));
   }
+  // 未提報天數:當月上班日(國定假日不算)到昨天為止,沒有任何工時紀錄的日子;「免提報工時」者不顯示
+  let missSeq = 0;
+  async function renderMissing(recs) {
+    const seq = ++missSeq, mon = $('hrMonth').value;
+    const who = can('hoursAll') ? $('hrWho').value : '';
+    const email = who ? ((staffList().find((x) => x.name === who) || {}).email || '') : myEmail();
+    const { days, exact } = await Hours.workdays(mon, todayISO());
+    const el = $('hrMissing');
+    if (seq !== missSeq || !el) return;
+    if (email && hasPerm(email, 'noReport')) { el.hidden = false; el.className = 'hr-missing ok'; el.textContent = '免提報工時'; return; }
+    if (!days.length) { el.hidden = true; return; }
+    const done = Hours.reportedDays(recs);
+    const miss = days.filter((d) => !done.has(d));
+    el.hidden = false;
+    el.className = 'hr-missing' + (miss.length ? '' : ' ok');
+    el.title = (exact ? '依行政院人事行政總處行事曆' : '行事曆暫時無法取得,只排除週六日') + ';當天 23:59 前提報都不算未提報';
+    el.textContent = miss.length
+      ? `未提報 ${miss.length} 天:${miss.slice(0, 8).map((d) => +d.slice(5, 7) + '/' + +d.slice(8)).join('、')}${miss.length > 8 ? '…' : ''}`
+      : '✅ 已全部提報';
+  }
   function renderHours() {
     const recs = monthHours().sort((a, b) => String(b.start).localeCompare(String(a.start)));
     const total = recs.reduce((s, r) => s + (Number(r.hours) || 0), 0);
@@ -2277,7 +2299,9 @@
     sum.append(h('button', { type: 'button', class: 'hr-total', 'aria-expanded': String(hrSumOpen), disabled: !recs.length,
       onclick: () => { hrSumOpen = !hrSumOpen; renderHours(); } },
       h('span', {}, `${$('hrMonth').value.replace('-', '/')} 合計`), h('b', {}, fmtH(total) + ' 小時'), h('small', {}, `${recs.length} 筆`),
+      h('span', { id: 'hrMissing', class: 'hr-missing', hidden: true }),
       recs.length ? h('i', { class: 'hr-caret' }, hrSumOpen ? '▲ 收合' : '▼ 展開') : null));
+    renderMissing(recs);
     if (hrSumOpen && recs.length) {
       const catSum = (c) => recs.filter((r) => r.cat === c).reduce((s, r) => s + (Number(r.hours) || 0), 0);
       sum.append(h('div', { class: 'hr-table-wrap' }, h('table', { class: 'hr-table hr-detail' },
@@ -2619,11 +2643,17 @@
   $('hsMonth').onchange = () => { if ($('hsMonth').value) replaceHash('#/hours/stats?m=' + $('hsMonth').value); showHourStats($('hsMonth').value); };
   $('hsExport').onclick = () => {
     const mon = $('hsMonth').value;
-    const rows = hourStats(mon);
-    if (!rows.length) return toast('這個月份沒有工時紀錄');
-    const total = rows.reduce((t, r) => t + r.hours, 0);
-    const data = [...rows.map((r) => [r.code, r.pname, r.cat, r.fee, r.dept, r.empNo, r.name, Math.round(r.hours * 10) / 10]), ['合計', '', '', '', '', '', '', Math.round(total * 10) / 10]];
-    saveXlsx(Exporter.table(HR_STAT_COLS, data, `${mon.replace('-', '/')} 工時統計`, mon + ' 工時統計'), `工時統計_${mon.replace('-', '')}.xlsx`);
+    // 匯出明細:一筆紀錄一列(月份|日期|姓名|部門|報工類別|專案代號|作業項目|工時|備註說明),依公司人員順序、日期排序
+    const staff = staffList();
+    const stOf = (r) => staff.findIndex((x) => (r.email && x.email && x.email.toLowerCase() === r.email) || x.name === r.name);
+    const recs = hoursList().filter((r) => String(r.start || '').startsWith(mon));
+    if (!recs.length) return toast('這個月份沒有工時紀錄');
+    const rows = recs.map((r) => {
+      const i = stOf(r), st = staff[i];
+      return { i: i < 0 ? 1e6 : i, month: +mon.slice(5), date: String(r.start).slice(0, 10), name: r.name || '', dept: st ? st.dept || '' : '外包',
+        cat: r.cat || '', code: r.code || '', pname: r.pname || (hourProj(r.code) || {}).name || '', hours: Number(r.hours) || 0, note: r.note || '', start: String(r.start) };
+    }).sort((a, b) => a.i - b.i || a.name.localeCompare(b.name, 'zh-Hant') || a.start.localeCompare(b.start));
+    saveXlsx(Exporter.detail(rows), `工時統計_${mon.replace('-', '')}.xlsx`);
   };
   $('hrMonth').onchange = () => { ssSet(HR_LS_MONTH, $('hrMonth').value); renderHours(); };
   $('hrWho').onchange = renderHours;
@@ -2871,8 +2901,8 @@
         const admin = CFG.ADMINS.map((x) => x.toLowerCase()).includes(p.email);
         const boxes = Perms.KEYS.map((k) => {
           const cb = h('input', { type: 'checkbox' });
-          cb.checked = admin || !!p[k.key];
-          cb.disabled = admin;
+          cb.checked = (admin && !k.flag) || !!p[k.key];
+          cb.disabled = admin && !k.flag;
           cb.onchange = () => {
             p[k.key] = cb.checked;
             if (k.key === 'pmEdit' && cb.checked) p.pmView = true; // 能編輯一定看得到

@@ -6,6 +6,7 @@
  *       更新程式後:部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署(網址不變)
  *       加速:在編輯器選函式 installWarmTrigger → 執行一次(建立每 10 分鐘預熱排程)
  *       備份:在編輯器選函式 installDailyBackup → 執行一次(建立每日 02:00 備份排程並立即備份)
+ *       工時:在編輯器選函式 installHoursNotice → 執行一次(每月第一個上班日 09:00 寄未提報提醒;testHoursNotice 只寄名單給管理者)
  *       日曆:在編輯器選函式 syncCalendar → 執行一次(授權日曆),再部署新版本;之後近期工作項目每次存檔自動同步
  * 安全:只回傳「履歷編號 + 分享碼」都相符的那一份履歷;圖片/附件也只限該履歷中有列出的檔案。
  *
@@ -262,6 +263,134 @@ function sendOverdue(always) {
     htmlBody: overdueHtml(r) + (pmFile ? '' : '<p>(找不到 Project Management.xlsx)</p>'),
     name: 'ATK專案履歷',
   });
+}
+
+// ── 每月工時未提報通知 ──
+// 啟用:在編輯器選函式 installHoursNotice → 執行一次。測試:執行 testHoursNotice(只把名單寄給管理者,不寄給同仁)
+// 每月第一個上班日 09:00 檢查「上個月」每位公司人員(有 E-Mail、權限表未勾「免提報工時」)的未提報上班日,
+// 有缺的人各寄一封提醒(請於 2 天內補齊),並寄一份名單給管理者;同一個月只寄一次
+// 上班日依行政院人事行政總處行事曆(TaiwanCalendar,國定假日不算、補班算);抓不到時只排除週六日
+var HOURS_SHEET = '工時', STAFF_SHEET = '公司人員', PERM_SHEET = '權限';
+var HOURS_DEADLINE_DAYS = 2;
+var TW_CAL_URL = 'https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/';
+
+function installHoursNotice() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (['hoursNoticePlan', 'hoursNotice'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
+  });
+  // 每天 7 點多檢查今天是不是本月第一個上班日,是的話排好 09:00 的單次排程
+  ScriptApp.newTrigger('hoursNoticePlan').timeBased().everyDays(1).atHour(7).inTimezone(TZ).create();
+  hoursNoticePlan();
+}
+function hoursNoticePlan() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'hoursNotice') ScriptApp.deleteTrigger(t); });
+  var today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+  if (PropertiesService.getScriptProperties().getProperty('HOURS_NOTICE_SENT') === prevMonthOf(today)) return;
+  var days = workdaysOf(today.slice(0, 7), twHolidays(+today.slice(0, 4)));
+  if (days[0] !== today) return;
+  var at = new Date(today + 'T09:00:00+08:00');
+  if (at.getTime() > Date.now()) ScriptApp.newTrigger('hoursNotice').timeBased().at(at).create();
+  else hoursNotice(); // 已過 09:00(例如當天才安裝)就直接檢查
+}
+function hoursNotice() { sendHoursNotice(false); }
+function testHoursNotice() { sendHoursNotice(true); }
+
+function sendHoursNotice(test) {
+  var props = PropertiesService.getScriptProperties();
+  var today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+  var mon = prevMonthOf(today);
+  if (!test && props.getProperty('HOURS_NOTICE_SENT') === mon) return;
+  var hol = twHolidays(+mon.slice(0, 4));
+  var file = getFile();
+  var permGrid = null;
+  try { permGrid = readGrid(file, PERM_SHEET); } catch (err) { /* 還沒有權限表 */ }
+  var list = missingByPerson(readGrid(file, HOURS_SHEET), readGrid(file, STAFF_SHEET), permGrid, workdaysOf(mon, hol));
+  var monText = mon.replace('-', '/');
+  var dl = new Date(Date.now() + HOURS_DEADLINE_DAYS * 86400000);
+  var deadline = Utilities.formatDate(dl, TZ, 'M/d');
+  var md = function (d) { return +d.slice(5, 7) + '/' + +d.slice(8); };
+  if (!test) list.forEach(function (p) {
+    var dates = p.miss.map(md).join('、');
+    MailApp.sendEmail({
+      to: p.email,
+      subject: '【工時提報提醒】' + monText + ' 尚有 ' + p.miss.length + ' 天未提報',
+      body: p.name + ' 您好:\n\n系統檢查 ' + monText + ' 的工時,以下上班日尚未提報(共 ' + p.miss.length + ' 天):\n' + dates +
+        '\n\n請於 ' + HOURS_DEADLINE_DAYS + ' 天內(' + deadline + ' 前)完成工時提報。\n' + APP_URL + '#/hours\n\n(本信由系統自動發送)',
+      htmlBody: '<p>' + htmlEsc(p.name) + ' 您好:</p><p>系統檢查 <b>' + monText + '</b> 的工時,以下上班日尚未提報(共 <b>' + p.miss.length + '</b> 天):</p>' +
+        '<p>' + htmlEsc(dates) + '</p><p>請於 <b>' + HOURS_DEADLINE_DAYS + ' 天內(' + deadline + ' 前)</b>完成工時提報:<a href="' + APP_URL + '#/hours">ATK專案履歷 → 工時統計</a></p>' +
+        '<p style="color:#888">(本信由系統自動發送)</p>',
+      name: 'ATK專案履歷',
+    });
+  });
+  var summary = list.length ? list.map(function (p) { return p.name + '(' + p.email + '):' + p.miss.length + ' 天 — ' + p.miss.map(md).join('、'); }).join('\n')
+    : '全員都已完成提報';
+  MailApp.sendEmail({
+    to: NOTIFY_TO || Session.getEffectiveUser().getEmail(),
+    subject: (test ? '[測試,未寄給同仁] ' : '') + '【工時未提報名單】' + monText + ' 共 ' + list.length + ' 人' + (hol ? '' : '(行事曆無法取得,只排除週六日)'),
+    body: summary + '\n\n' + (test ? '這是測試:沒有寄信給同仁。' : '已寄提醒信給以上同仁,期限 ' + deadline + '。') + '\n' + APP_URL + '#/hours',
+    name: 'ATK專案履歷',
+  });
+  if (!test) props.setProperty('HOURS_NOTICE_SENT', mon);
+}
+// 行政院人事行政總處行事曆的假日(yyyy-mm-dd);抓不到回傳 null(改用週六日)
+function twHolidays(year) {
+  try {
+    var resp = UrlFetchApp.fetch(TW_CAL_URL + year + '.json', { muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) return null;
+    return holidaySet(JSON.parse(resp.getContentText()));
+  } catch (err) { return null; }
+}
+
+// ---- 以下為純資料處理(不呼叫 GAS API,可在瀏覽器測試) ----
+function holidaySet(list) {
+  var set = {};
+  list.forEach(function (d) { if (d.isHoliday) set[d.date.slice(0, 4) + '-' + d.date.slice(4, 6) + '-' + d.date.slice(6, 8)] = true; });
+  return set;
+}
+function prevMonthOf(ymd) {
+  var y = +ymd.slice(0, 4), m = +ymd.slice(5, 7) - 1;
+  if (!m) { y--; m = 12; }
+  return y + '-' + pad2(m);
+}
+function workdaysOf(mon, hol) {
+  var y = +mon.slice(0, 4), m = +mon.slice(5, 7), out = [];
+  for (var d = new Date(Date.UTC(y, m - 1, 1)); d.getUTCMonth() === m - 1; d = new Date(d.getTime() + 86400000)) {
+    var s = d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate());
+    if (hol ? !hol[s] : d.getUTCDay() % 6 !== 0) out.push(s);
+  }
+  return out;
+}
+function isYes(v) { return /^(✔|☑|✅|v|y|是|true|1)/i.test(String(v || '').trim()); }
+// 每位公司人員(有 E-Mail、未勾免提報工時)在 days 中沒有任何工時紀錄的日子;每筆紀錄從開始日到結束日都算有提報
+function missingByPerson(hoursGrid, staffGrid, permGrid, days) {
+  var exempt = {};
+  if (permGrid) {
+    var pt = tableOf(permGrid);
+    pt.rows.forEach(function (row) { if (isYes(cellText(row, pt.col['免提報工時']))) exempt[cellText(row, pt.col['人員']).toLowerCase()] = true; });
+  }
+  var ht = tableOf(hoursGrid), hc = ht.col;
+  var done = {}; // key(email 或 name:姓名) → { 'yyyy-mm-dd': true }
+  ht.rows.forEach(function (row) {
+    var a = cellSerial(row, hc['開始時間']);
+    if (a == null) return;
+    var b = cellSerial(row, hc['結束時間']);
+    if (b == null || b < a || b - a > 62) b = a;
+    var email = cellText(row, hc['E-Mail']).toLowerCase(), name = cellText(row, hc['姓名']);
+    [email, 'name:' + name].forEach(function (k) {
+      if (!k || k === 'name:') return;
+      var set = done[k] || (done[k] = {});
+      for (var n = a; n <= b; n++) set[serialYMD(n).replace(/\//g, '-')] = true;
+    });
+  });
+  var st = tableOf(staffGrid), sc = st.col, out = [];
+  st.rows.forEach(function (row) {
+    var email = cellText(row, sc['E-Mail']).toLowerCase(), name = cellText(row, sc['姓名']);
+    if (!email || exempt[email]) return;
+    var a = done[email] || {}, b = done['name:' + name] || {};
+    var miss = days.filter(function (d) { return !a[d] && !b[d]; });
+    if (miss.length) out.push({ name: name, email: email, miss: miss });
+  });
+  return out;
 }
 
 // ── 每日 02:00 自動備份 ──

@@ -625,3 +625,5 @@ button.hr-total:disabled { cursor: default; }
 .hr-add-row { display: flex; gap: 8px; margin-top: 12px; }
 .hr-add-row #hrAddEntry { flex: 1 1 auto; }
 .hr-add-row #hrSameDay { flex: none; }
+.hr-total .hr-missing { flex: 1 1 200px; min-width: 0; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--danger, #c62828); background: color-mix(in srgb, var(--danger, #c62828) 10%, transparent); text-align: left; overflow-wrap: anywhere; }
+.hr-total .hr-missing.ok { color: var(--ok, #2e7d32); background: color-mix(in srgb, var(--ok, #2e7d32) 10%, transparent); }

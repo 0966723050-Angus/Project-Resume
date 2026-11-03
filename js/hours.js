@@ -79,5 +79,51 @@
     return Math.round(d * 24 * 2) / 2;
   }
 
-  window.Hours = { SHEET, FIELDS, CATS, read, write, diffHours };
+  // ---- 上班日(行政院人事行政總處行事曆:國定假日、補假不算,補班算)----
+  // 資料取自 TaiwanCalendar(jsDelivr),每年一份,記在本機;抓不到時只排除週六日
+  const CAL_URL = (y) => `https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${y}.json`;
+  const cal = {}; // year → Promise<Set<'yyyy-mm-dd'> 假日> | null(改用週六日)
+  function holidays(year) {
+    if (!cal[year]) {
+      cal[year] = (async () => {
+        const key = 'pr_twcal_' + year;
+        let list = null;
+        try { list = JSON.parse(localStorage.getItem(key) || 'null'); } catch { /* 忽略 */ }
+        if (!list) {
+          const resp = await fetch(CAL_URL(year));
+          if (!resp.ok) throw new Error('calendar ' + resp.status);
+          list = (await resp.json()).filter((d) => d.isHoliday).map((d) => `${d.date.slice(0, 4)}-${d.date.slice(4, 6)}-${d.date.slice(6, 8)}`);
+          if (list.length > 60) try { localStorage.setItem(key, JSON.stringify(list)); } catch { /* 忽略 */ }
+        }
+        return new Set(list);
+      })().catch(() => null);
+    }
+    return cal[year];
+  }
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // 某月(yyyy-mm)到 before(不含,yyyy-mm-dd)為止的上班日;當天 23:59 前還能提報,所以不含今天
+  async function workdays(mon, before) {
+    const [y, m] = mon.split('-').map(Number);
+    const hol = await holidays(y);
+    const out = [];
+    for (let d = new Date(y, m - 1, 1); d.getMonth() === m - 1; d.setDate(d.getDate() + 1)) {
+      const s = iso(d);
+      if (before && s >= before) break;
+      if (hol ? !hol.has(s) : d.getDay() % 6 !== 0) out.push(s);
+    }
+    return { days: out, exact: !!hol };
+  }
+  // 有提報的日子:每筆紀錄從開始日到結束日都算
+  function reportedDays(recs) {
+    const set = new Set();
+    for (const r of recs) {
+      const a = String(r.start || '').slice(0, 10), b = String(r.end || '').slice(0, 10) || a;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(a)) continue;
+      for (let d = new Date(a + 'T00:00'), n = 0; iso(d) <= b && n < 62; d.setDate(d.getDate() + 1), n++) set.add(iso(d));
+      set.add(a);
+    }
+    return set;
+  }
+
+  window.Hours = { SHEET, FIELDS, CATS, read, write, diffHours, workdays, reportedDays };
 })();
