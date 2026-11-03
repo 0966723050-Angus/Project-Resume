@@ -359,6 +359,7 @@
       renderPicker();
       $('picker').hidden = false;
       document.body.classList.add('noscroll');
+      if (!matchMedia('(pointer: coarse)').matches) setTimeout(() => $('pickerSearch').focus(), 0); // 電腦版直接可打字搜尋
     });
   }
   function closePicker(value) {
@@ -421,9 +422,17 @@
     }
   }
   $('pickerSearch').oninput = () => picker && renderPicker();
+  // 單選清單:搜尋框按 Enter 選第一筆
+  $('pickerSearch').onkeydown = (e) => {
+    if (e.key !== 'Enter' || !picker || picker.multi) return;
+    e.preventDefault();
+    const first = $('pickerList').querySelector('.pick-item');
+    if (first) first.click();
+  };
   // 手機:專案選擇的原生下拉(寬度窄、名稱擠在一起)改開底部清單 — 一行代號、一行名稱,可搜尋
-  function sheetSelect(sel, title) {
-    if (!(Drive.IS_MOBILE || matchMedia('(pointer: coarse)').matches)) return;
+  // always:電腦版也改開清單(需要關鍵字搜尋時)
+  function sheetSelect(sel, title, always = false) {
+    if (!always && !(Drive.IS_MOBILE || matchMedia('(pointer: coarse)').matches)) return;
     const open = async (e) => {
       e.preventDefault();
       sel.blur();
@@ -2218,7 +2227,17 @@
   let hrEdit = null; // 修改中的紀錄 id;null = 新增模式
   let hrSumOpen = false; // 月份統計明細是否展開(預設收合)
   let hrEntries = [];
-  const newEntry = () => ({ code: '', cat: '', start: '', end: '', hours: '', note: '', auto: true });
+  // 新的一筆:預設當天 08:30~17:30(day 可指定日期)
+  const newEntry = (day = todayISO()) => {
+    const start = `${day}T08:30`, end = `${day}T17:30`;
+    return { code: '', cat: '', start, end, hours: Hours.diffHours(start, end) ?? '', note: '', auto: true };
+  };
+  // 報工類別預設:NA- 開頭為「一般」,但 NA-0000011、NA-0000012 為「工程」;其他代號不自動選
+  const autoCat = (code) => {
+    const c = String(code || '').trim().toUpperCase();
+    if (!c.startsWith('NA-')) return '';
+    return ['NA-0000011', 'NA-0000012'].includes(c) ? '工程' : '一般';
+  };
 
   // 預設只看本人;管理者與「工時統計(全員)」可切換人員、使用「統計」
   function refreshWho() {
@@ -2327,7 +2346,7 @@
     const box = $('hrEntries');
     box.innerHTML = '';
     hrEntries.forEach((en, i) => box.append(hourEntryEl(en, i)));
-    $('hrAddEntry').hidden = !!hrEdit;
+    $('hrAddEntry').hidden = $('hrSameDay').hidden = !!hrEdit;
     $('hrCancel').hidden = !hrEdit;
   }
   function hourEntryEl(en, i) {
@@ -2335,7 +2354,8 @@
       ...projDesc().filter((p) => p.code).map((p) => h('option', { value: p.code }, `${p.code} ${p.name}`)));
     if (en.code && !hourProj(en.code)) projSel.append(h('option', { value: en.code }, en.code));
     projSel.value = en.code || '';
-    projSel.onchange = () => { en.code = projSel.value; };
+    projSel.onchange = () => { en.code = projSel.value; const c = autoCat(en.code); if (c) { en.cat = c; catSel.value = c; } };
+    sheetSelect(projSel, '選擇作業項目', true); // 電腦/手機都開可輸入關鍵字搜尋的清單
     const catSel = h('select', {}, h('option', { value: '' }, '請選擇…'), ...Hours.CATS.map((c) => h('option', { value: c }, c)));
     catSel.value = en.cat || '';
     catSel.onchange = () => { en.cat = catSel.value; };
@@ -2608,12 +2628,33 @@
     const en = newEntry();
     // 下一筆沿用上一筆的類別;上一筆在下班(17:30)前結束時,接續其結束時間到當天 17:30,否則用預設時間
     if (last) {
+      const day = String(last.start || '').slice(0, 10);
+      if (day) Object.assign(en, newEntry(day)); // 與上一筆同一天
       en.cat = last.cat;
       const end = String(last.end || '');
       if (end && end.slice(11, 16) < '17:30') { en.start = end; en.end = end.slice(0, 10) + 'T17:30'; en.hours = Hours.diffHours(en.start, en.end) ?? ''; }
     }
     hrEntries.push(en);
     renderHourForm($('hrNameInput').value);
+  };
+  // 同昨日:帶入此人前一個有登錄的日子(通常是昨天;週一會帶上週五)的全部紀錄,日期改為今天
+  $('hrSameDay').onclick = () => {
+    const name = $('hrNameInput').value;
+    const today = todayISO();
+    const mine = (r) => (name === myStaffName() ? r.email === myEmail() || (!r.email && r.name === name) : r.name === name);
+    const past = hoursList().filter((r) => mine(r) && String(r.start || '').slice(0, 10) < today);
+    if (!past.length) return toast('找不到 ' + name + ' 之前的工時紀錄');
+    const day = past.reduce((m, r) => (r.start.slice(0, 10) > m ? r.start.slice(0, 10) : m), '');
+    const shift = (dt) => { // 保留時間,日期平移到今天(跨日的結束時間一起平移)
+      if (!dt) return '';
+      const n = Math.round((new Date(dt.slice(0, 10)) - new Date(day)) / 864e5);
+      const t = new Date(today); t.setDate(t.getDate() + n);
+      return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}` + dt.slice(10);
+    };
+    hrEntries = past.filter((r) => r.start.slice(0, 10) === day).sort((a, b) => String(a.start).localeCompare(String(b.start)))
+      .map((r) => ({ code: r.code, cat: r.cat, start: shift(r.start), end: shift(r.end), hours: r.hours, note: r.note || '', auto: Hours.diffHours(r.start, r.end) === Number(r.hours) }));
+    renderHourForm(name);
+    toast(`已帶入 ${day.slice(5).replace('-', '/')} 的 ${hrEntries.length} 筆紀錄(日期為今天),確認後按儲存`);
   };
   $('hrSave').onclick = saveHours;
   $('hrCancel').onclick = () => resetHourForm();
