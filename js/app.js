@@ -2560,9 +2560,11 @@
       if (id === 'erpDirBox' && !can('hoursAll')) continue;
       const path = h('input', { type: 'text', readonly: true, class: 'erp-path', 'aria-label': 'ERP工時匯出路徑', placeholder: '尚未設定匯出路徑' });
       path.value = dir ? `${dir.name}\\${ERP_FILE}` : '';
-      const pick = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => pickErpDir().catch(() => {}) }, dir ? '📁 變更' : '📁 選擇資料夾');
-      const clear = dir ? h('button', { type: 'button', class: 'btn btn-danger-ghost btn-sm', onclick: async () => { await kv('readwrite', (st) => st.delete('erpDir')); renderErpDir(); } }, '清除') : null;
+      // 變更/清除匯出路徑只限管理者
+      const pick = isAdmin() ? h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => pickErpDir().catch(() => {}) }, dir ? '📁 變更' : '📁 選擇資料夾') : null;
+      const clear = dir && isAdmin() ? h('button', { type: 'button', class: 'btn btn-danger-ghost btn-sm', onclick: async () => { await kv('readwrite', (st) => st.delete('erpDir')); renderErpDir(); } }, '清除') : null;
       const hint = !canPickDir ? '此瀏覽器無法預設資料夾(請用電腦版 Chrome 或 Edge),按「ERP工時」會改為下載 ' + ERP_FILE
+        : !dir && !isAdmin() ? '匯出路徑由管理者設定;此電腦尚未設定,按「🏭 ERP工時」會改為下載 ' + ERP_FILE
         : !dir ? '請先選擇 ERP 匯入用的資料夾;之後按「🏭 ERP工時」就會直接寫入(覆寫)該資料夾的 ' + ERP_FILE
           : perm === 'granted' ? '✅ 已預設,按「🏭 ERP工時」即一鍵匯出(覆寫同名檔案)'
             : '已預設;瀏覽器重新開啟後第一次匯出會再詢問一次寫入權限(可選「每次造訪都允許」)';
@@ -2571,6 +2573,7 @@
     }
   }
   async function pickErpDir() {
+    if (!isAdmin()) throw new Error('只有管理者可以設定匯出路徑');
     const dir = await showDirectoryPicker({ id: 'erp-wt', mode: 'readwrite' });
     await kv('readwrite', (st) => st.put(dir, 'erpDir'));
     renderErpDir();
@@ -2598,6 +2601,7 @@
     if (!canPickDir) return saveXlsx(bytes, ERP_FILE);
     try {
       let dir = await getErpDir();
+      if (!dir && !isAdmin()) return saveXlsx(bytes, ERP_FILE); // 非管理者不能設定路徑:改為下載
       if (!dir) dir = await pickErpDir();
       if ((await dir.queryPermission({ mode: 'readwrite' })) !== 'granted' && (await dir.requestPermission({ mode: 'readwrite' })) !== 'granted') return toast('未取得資料夾寫入權限');
       const w = await (await dir.getFileHandle(ERP_FILE, { create: true })).createWritable();
