@@ -140,22 +140,39 @@
   }
   const q = (s) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
-  // 依完整檔名找檔案(最近修改的優先),找不到回傳 null
-  async function findByName(name) {
-    const query = encodeURIComponent(`name = '${q(name)}' and trashed = false`);
-    const resp = await api(`${API}?supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives&orderBy=modifiedTime desc&pageSize=10` +
-      `&fields=${encodeURIComponent('files(' + META_FIELDS + ')')}&q=${query}`);
-    if (!resp.ok) throw await apiError(resp, '搜尋檔案');
-    const { files = [] } = await resp.json();
-    return files[0] || null;
-  }
-  // 同名檔案全部列出(新到舊),供挑出正確的那一份
-  async function findAllByName(name) {
-    const query = encodeURIComponent(`name = '${q(name)}' and trashed = false`);
-    const resp = await api(`${API}?supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives&orderBy=modifiedTime desc&pageSize=20` +
-      `&fields=${encodeURIComponent('files(' + META_FIELDS + ')')}&q=${query}`);
+  async function listFiles(query, pageSize = 20) {
+    const resp = await api(`${API}?supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives&orderBy=modifiedTime desc&pageSize=${pageSize}` +
+      `&fields=${encodeURIComponent('files(' + META_FIELDS + ')')}&q=${encodeURIComponent(query)}`);
     if (!resp.ok) throw await apiError(resp, '搜尋檔案');
     return (await resp.json()).files || [];
+  }
+  // Apps Script 每日備份(「專案履歷備份/yyyy-MM-dd」)的副本與正本同名,且建立時間較新;
+  // 依檔名找檔時一律排除這些資料夾裡的檔案,否則會開到備份檔、存到備份檔
+  let backupDirs = null;
+  async function backupFolderIds() {
+    if (backupDirs) return backupDirs;
+    const ids = new Set();
+    try {
+      const roots = await listFiles(`name = '${q(CFG.BACKUP_FOLDER || '專案履歷備份')}' and mimeType = '${FOLDER_MIME}' and trashed = false`);
+      roots.forEach((f) => ids.add(f.id));
+      if (roots.length) {
+        const days = await listFiles(`mimeType = '${FOLDER_MIME}' and (${roots.map((f) => `'${f.id}' in parents`).join(' or ')})`, 200);
+        days.forEach((f) => ids.add(f.id));
+      }
+      backupDirs = ids;
+    } catch { /* 查不到就不排除,下次再試 */ }
+    return ids;
+  }
+  // 同名檔案全部列出(新到舊,已排除備份副本),供挑出正確的那一份
+  async function findAllByName(name) {
+    const files = await listFiles(`name = '${q(name)}' and trashed = false`);
+    if (files.length < 2) return files;
+    const skip = await backupFolderIds();
+    return files.filter((f) => !(f.parents || []).some((p) => skip.has(p)));
+  }
+  // 依完整檔名找檔案(最近修改的優先,不含備份副本),找不到回傳 null
+  async function findByName(name) {
+    return (await findAllByName(name))[0] || null;
   }
 
   async function getMeta(fileId) {
