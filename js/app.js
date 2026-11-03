@@ -2269,25 +2269,51 @@
     const mine = (r) => r.email === myEmail() || (!r.email && r.name === myStaffName());
     return hoursList().filter((r) => String(r.start || '').startsWith(mon) && (who ? r.name === who : mine(r)));
   }
-  // 未提報天數:當月上班日(國定假日不算)到昨天為止,沒有任何工時紀錄的日子;「免提報工時」者不顯示
+  // 提報狀態:當月上班日(國定假日不算)到昨天為止沒有工時紀錄的日子,每天一個核取方塊;
+  // 打勾 = 當天請假(存「請假」工作表),不算未提報;「免提報工時」者不顯示
   let missSeq = 0;
+  const md = (d) => +d.slice(5, 7) + '/' + +d.slice(8);
   async function renderMissing(recs) {
     const seq = ++missSeq, mon = $('hrMonth').value;
     const who = can('hoursAll') ? $('hrWho').value : '';
+    const name = who || myStaffName();
     const email = who ? ((staffList().find((x) => x.name === who) || {}).email || '') : myEmail();
     const { days, exact } = await Hours.workdays(mon, todayISO());
     const el = $('hrMissing');
     if (seq !== missSeq || !el) return;
+    el.innerHTML = '';
     if (email && hasPerm(email, 'noReport')) { el.hidden = false; el.className = 'hr-missing ok'; el.textContent = '免提報工時'; return; }
     if (!days.length) { el.hidden = true; return; }
+    const isMine = (x) => (email ? x.email === email : !x.email && x.name === name);
+    const leave = new Set((S.data ? Hours.readLeave(S.data.book) : []).filter(isMine).map((x) => x.date));
     const done = Hours.reportedDays(recs);
-    const miss = days.filter((d) => !done.has(d));
+    const open = days.filter((d) => !done.has(d)); // 沒有工時紀錄的上班日(含已勾請假)
+    const miss = open.filter((d) => !leave.has(d));
+    const editable = !who || can('hoursAll');
     el.hidden = false;
     el.className = 'hr-missing' + (miss.length ? '' : ' ok');
-    el.title = (exact ? '依行政院人事行政總處行事曆' : '行事曆暫時無法取得,只排除週六日') + ';當天 23:59 前提報都不算未提報';
-    el.textContent = miss.length
-      ? `未提報 ${miss.length} 天:${miss.slice(0, 8).map((d) => +d.slice(5, 7) + '/' + +d.slice(8)).join('、')}${miss.length > 8 ? '…' : ''}`
-      : '✅ 已全部提報';
+    el.title = (exact ? '上班日依行政院人事行政總處行事曆' : '行事曆暫時無法取得,只排除週六日') + ';當天 23:59 前提報都不算未提報';
+    const boxes = open.map((d) => {
+      const cb = h('input', { type: 'checkbox', disabled: !editable || null, 'aria-label': md(d) + ' 請假' });
+      cb.checked = leave.has(d);
+      cb.onchange = () => setLeave({ email, name }, d, cb.checked);
+      return h('label', { class: 'hr-leave' + (cb.checked ? ' on' : '') }, cb, md(d));
+    });
+    el.append(h('div', { class: 'hr-miss-line' },
+      h('b', {}, miss.length ? `未提報 ${miss.length} 天` : '✅ 已全部提報'), open.length ? h('span', { class: 'hr-miss-sep' }, ':') : null, ...boxes),
+      open.length ? h('small', { class: 'hr-miss-note' }, '若當天請假,請於方框打勾') : null);
+  }
+  async function setLeave(who, date, on) {
+    try {
+      await commit(on ? '登記請假…' : '取消請假…', (d) => {
+        const same = (x) => x.date === date && (who.email ? x.email === who.email : !x.email && x.name === who.name);
+        const list = Hours.readLeave(d.book).filter((x) => !same(x));
+        if (on) list.push({ email: who.email, name: who.name, date });
+        Hours.writeLeave(d.book, list);
+      });
+      toast(on ? `已登記 ${md(date)} 請假` : `已取消 ${md(date)} 請假`);
+    } catch (err) { toast('儲存失敗:' + errMsg(err), 6000); }
+    renderHours();
   }
   function renderHours() {
     const recs = monthHours().sort((a, b) => String(b.start).localeCompare(String(a.start)));
@@ -2296,11 +2322,13 @@
     const sum = $('hrSummary');
     sum.innerHTML = '';
     sum.classList.toggle('open', hrSumOpen && !!recs.length);
-    sum.append(h('button', { type: 'button', class: 'hr-total', 'aria-expanded': String(hrSumOpen), disabled: !recs.length,
-      onclick: () => { hrSumOpen = !hrSumOpen; renderHours(); } },
-      h('span', {}, `${$('hrMonth').value.replace('-', '/')} 合計`), h('b', {}, fmtH(total) + ' 小時'), h('small', {}, `${recs.length} 筆`),
-      h('span', { id: 'hrMissing', class: 'hr-missing', hidden: true }),
-      recs.length ? h('i', { class: 'hr-caret' }, hrSumOpen ? '▲ 收合' : '▼ 展開') : null));
+    // 標題列:點合計或「展開」切換明細;中間的提報狀態(含請假核取方塊)點擊不會收合
+    const toggle = () => { if (recs.length) { hrSumOpen = !hrSumOpen; renderHours(); } };
+    sum.append(h('div', { class: 'hr-total' + (recs.length ? ' can-open' : '') },
+      h('button', { type: 'button', class: 'hr-total-btn', disabled: !recs.length, 'aria-expanded': String(hrSumOpen), onclick: toggle },
+        h('span', {}, `${$('hrMonth').value.replace('-', '/')} 合計`), h('b', {}, fmtH(total) + ' 小時'), h('small', {}, `${recs.length} 筆`)),
+      h('div', { id: 'hrMissing', class: 'hr-missing', hidden: true }),
+      recs.length ? h('button', { type: 'button', class: 'hr-caret', onclick: toggle }, hrSumOpen ? '▲ 收合' : '▼ 展開') : null));
     renderMissing(recs);
     if (hrSumOpen && recs.length) {
       const catSum = (c) => recs.filter((r) => r.cat === c).reduce((s, r) => s + (Number(r.hours) || 0), 0);

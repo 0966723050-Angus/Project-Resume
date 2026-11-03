@@ -125,5 +125,36 @@
     return set;
   }
 
-  window.Hours = { SHEET, FIELDS, CATS, read, write, diffHours, workdays, reportedDays };
+  // ---- 請假日(「請假」工作表,一列一天:E-Mail | 姓名 | 日期 yyyy-mm-dd);請假日不算未提報 ----
+  const LEAVE_SHEET = '請假';
+  const LEAVE_FIELDS = [{ key: 'email', label: 'E-Mail', w: 28 }, { key: 'name', label: '姓名', w: 12 }, { key: 'date', label: '日期', w: 12 }];
+  function readLeave(book) {
+    const g = WorkIO.grid(book, LEAVE_SHEET);
+    if (!g) return [];
+    const colOf = {};
+    for (let i = 0; i < 10; i++) { const f = LEAVE_FIELDS.find((x) => x.label === String(g.get(col(i) + 1) ?? '').trim()); if (f && !colOf[f.key]) colOf[f.key] = col(i); }
+    const out = [];
+    for (let r = 2; r <= g.lastRow; r++) {
+      const get = (k) => (colOf[k] ? g.get(colOf[k] + r) : undefined);
+      const d = get('date');
+      const date = typeof d === 'number' ? Store.serialToDT(d).slice(0, 10) : String(d ?? '').trim().replace(/\//g, '-').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      out.push({ email: String(get('email') ?? '').trim().toLowerCase(), name: String(get('name') ?? '').trim(), date });
+    }
+    return out;
+  }
+  function writeLeave(book, list) {
+    const rows = list.slice().sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name, 'zh-Hant'));
+    const head = `<row r="1">${LEAVE_FIELDS.map((f, i) => cell(col(i) + 1, f.label)).join('')}</row>`;
+    const body = rows.map((p, n) => `<row r="${n + 2}">${LEAVE_FIELDS.map((f, i) => cell(col(i) + (n + 2), p[f.key])).join('')}</row>`).join('');
+    const cols = LEAVE_FIELDS.map((f, i) => `<col min="${i + 1}" max="${i + 1}" width="${f.w}" customWidth="1"/>`).join('');
+    const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="${NS}">` +
+      `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
+      `<sheetFormatPr defaultRowHeight="20"/><cols>${cols}</cols><sheetData>${head}${body}</sheetData></worksheet>`;
+    const isNew = !book.sheets[LEAVE_SHEET];
+    book.files[WorkIO.ensureSheetPath(book.files, LEAVE_SHEET)] = new TextEncoder().encode(xml);
+    if (isNew) for (const p of ['xl/workbook.xml', 'xl/_rels/workbook.xml.rels', '[Content_Types].xml']) { delete book.docs[p]; book.touched.delete(p); }
+  }
+
+  window.Hours = { SHEET, FIELDS, CATS, read, write, diffHours, workdays, reportedDays, readLeave, writeLeave };
 })();

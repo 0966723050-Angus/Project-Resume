@@ -570,10 +570,12 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
 /* 工時統計 */
 #hrMonth { flex: 1 1 auto; }
 #hrWho { flex: 1 1 auto; }
-.hr-total { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.hr-total span { color: var(--muted); font-size: 13.5px; }
-.hr-total b { font-size: 22px; color: var(--primary); }
-.hr-total small { color: var(--muted); }
+.hr-total { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hr-total-btn { display: flex; align-items: baseline; gap: 10px; border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.hr-total-btn:disabled { cursor: default; }
+.hr-total-btn span { color: var(--muted); font-size: 13.5px; }
+.hr-total-btn b { font-size: 22px; color: var(--primary); }
+.hr-total-btn small { color: var(--muted); }
 .hr-table-wrap { overflow-x: auto; margin-top: 10px; }
 .hr-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .hr-table th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12.5px; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -606,9 +608,7 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
 .hs-table .hs-out { color: var(--warn); }
 .hr-ask-month { width: 100%; min-height: 44px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 16px; background: var(--surface-2); }
 /* 月份統計方塊:標題列可點擊收合/展開,明細列點擊修改 */
-button.hr-total { width: 100%; border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
-button.hr-total:disabled { cursor: default; }
-.hr-caret { margin-left: auto; font-style: normal; font-size: 13px; color: var(--primary); white-space: nowrap; }
+.hr-caret { margin-left: auto; border: 0; background: none; padding: 4px 0; font: inherit; font-size: 13px; color: var(--primary); white-space: nowrap; cursor: pointer; }
 .hr-detail th:nth-child(2) { text-align: left; }
 .hr-detail .hr-date { white-space: nowrap; color: var(--muted); }
 .hr-detail tr.hr-row-edit { cursor: pointer; }
@@ -625,5 +625,12 @@ button.hr-total:disabled { cursor: default; }
 .hr-add-row { display: flex; gap: 8px; margin-top: 12px; }
 .hr-add-row #hrAddEntry { flex: 1 1 auto; }
 .hr-add-row #hrSameDay { flex: none; }
-.hr-total .hr-missing { flex: 1 1 200px; min-width: 0; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--danger, #c62828); background: color-mix(in srgb, var(--danger, #c62828) 10%, transparent); text-align: left; overflow-wrap: anywhere; }
+.hr-total .hr-missing { flex: 1 1 260px; min-width: 0; padding: 6px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--danger, #c62828); background: color-mix(in srgb, var(--danger, #c62828) 10%, transparent); text-align: left; overflow-wrap: anywhere; }
 .hr-total .hr-missing.ok { color: var(--ok, #2e7d32); background: color-mix(in srgb, var(--ok, #2e7d32) 10%, transparent); }
+.hr-miss-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.hr-miss-sep { margin-left: -8px; }
+.hr-leave { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.hr-leave input { width: 16px; height: 16px; margin: 0; accent-color: var(--ok, #2e7d32); }
+.hr-leave.on { color: var(--muted); }
+.hr-leave:has(input:disabled) { cursor: default; }
+.hr-miss-note { display: block; margin-top: 3px; font-weight: 400; font-size: 12px; color: var(--muted); }

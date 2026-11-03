@@ -270,7 +270,7 @@ function sendOverdue(always) {
 // 每月第一個上班日 09:00 檢查「上個月」每位公司人員(有 E-Mail、權限表未勾「免提報工時」)的未提報上班日,
 // 有缺的人各寄一封提醒(請於 2 天內補齊),並寄一份名單給管理者;同一個月只寄一次
 // 上班日依行政院人事行政總處行事曆(TaiwanCalendar,國定假日不算、補班算);抓不到時只排除週六日
-var HOURS_SHEET = '工時', STAFF_SHEET = '公司人員', PERM_SHEET = '權限';
+var HOURS_SHEET = '工時', STAFF_SHEET = '公司人員', PERM_SHEET = '權限', LEAVE_SHEET = '請假';
 var HOURS_DEADLINE_DAYS = 2;
 var TW_CAL_URL = 'https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/';
 
@@ -304,7 +304,9 @@ function sendHoursNotice(test) {
   var file = getFile();
   var permGrid = null;
   try { permGrid = readGrid(file, PERM_SHEET); } catch (err) { /* 還沒有權限表 */ }
-  var list = missingByPerson(readGrid(file, HOURS_SHEET), readGrid(file, STAFF_SHEET), permGrid, workdaysOf(mon, hol));
+  var leaveGrid = null;
+  try { leaveGrid = readGrid(file, LEAVE_SHEET); } catch (err) { /* 還沒有人登記請假 */ }
+  var list = missingByPerson(readGrid(file, HOURS_SHEET), readGrid(file, STAFF_SHEET), permGrid, workdaysOf(mon, hol), leaveGrid);
   var monText = mon.replace('-', '/');
   var dl = new Date(Date.now() + HOURS_DEADLINE_DAYS * 86400000);
   var deadline = Utilities.formatDate(dl, TZ, 'M/d');
@@ -361,8 +363,9 @@ function workdaysOf(mon, hol) {
   return out;
 }
 function isYes(v) { return /^(✔|☑|✅|v|y|是|true|1)/i.test(String(v || '').trim()); }
-// 每位公司人員(有 E-Mail、未勾免提報工時)在 days 中沒有任何工時紀錄的日子;每筆紀錄從開始日到結束日都算有提報
-function missingByPerson(hoursGrid, staffGrid, permGrid, days) {
+// 每位公司人員(有 E-Mail、未勾免提報工時)在 days 中沒有任何工時紀錄的日子;每筆紀錄從開始日到結束日都算有提報,
+// 「請假」工作表登記的日子也不算未提報
+function missingByPerson(hoursGrid, staffGrid, permGrid, days, leaveGrid) {
   var exempt = {};
   if (permGrid) {
     var pt = tableOf(permGrid);
@@ -382,6 +385,16 @@ function missingByPerson(hoursGrid, staffGrid, permGrid, days) {
       for (var n = a; n <= b; n++) set[serialYMD(n).replace(/\//g, '-')] = true;
     });
   });
+  if (leaveGrid) {
+    var lt = tableOf(leaveGrid);
+    lt.rows.forEach(function (row) {
+      var n = cellSerial(row, lt.col['日期']);
+      if (n == null) return;
+      var email = cellText(row, lt.col['E-Mail']).toLowerCase(), name = cellText(row, lt.col['姓名']);
+      var k = email || 'name:' + name;
+      (done[k] || (done[k] = {}))[serialYMD(n).replace(/\//g, '-')] = true;
+    });
+  }
   var st = tableOf(staffGrid), sc = st.col, out = [];
   st.rows.forEach(function (row) {
     var email = cellText(row, sc['E-Mail']).toLowerCase(), name = cellText(row, sc['姓名']);
