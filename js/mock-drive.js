@@ -42,6 +42,11 @@
       const c = created(); const cid = Object.keys(c).find((k) => c[k].name === name);
       return cid ? cMeta(cid, c[cid]) : null;
     },
+    // 模擬同仁雲端硬碟裡另有一份較新的同名副本(不同上層資料夾),應挑附件資料夾同一層的那份
+    async findAllByName(name) {
+      const f = await this.findByName(name);
+      return f && f.id === 'xlsx1' ? [{ ...f, id: 'copy1', parents: ['myDrive'] }, f] : f ? [f] : [];
+    },
     async getMeta(id) { return meta(idOf(id)); },
     async download(id) {
       const c = created()[id];

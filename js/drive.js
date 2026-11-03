@@ -149,6 +149,14 @@
     const { files = [] } = await resp.json();
     return files[0] || null;
   }
+  // 同名檔案全部列出(新到舊),供挑出正確的那一份
+  async function findAllByName(name) {
+    const query = encodeURIComponent(`name = '${q(name)}' and trashed = false`);
+    const resp = await api(`${API}?supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives&orderBy=modifiedTime desc&pageSize=20` +
+      `&fields=${encodeURIComponent('files(' + META_FIELDS + ')')}&q=${query}`);
+    if (!resp.ok) throw await apiError(resp, '搜尋檔案');
+    return (await resp.json()).files || [];
+  }
 
   async function getMeta(fileId) {
     const resp = await api(`${API}/${fileId}?supportsAllDrives=true&fields=${encodeURIComponent(META_FIELDS)}`);
@@ -237,5 +245,5 @@
 
   const viewLink = (id) => `https://drive.google.com/file/d/${id}/view`;
 
-  window.Drive = { IS_MOBILE, IN_APP, IS_ANDROID, redirectError: () => redirectError, requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, getMeta, download, upload, createFile, ensureFolder, media, trash, permissions, whoAmI, signOut, viewLink };
+  window.Drive = { IS_MOBILE, IN_APP, IS_ANDROID, redirectError: () => redirectError, requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, findAllByName, getMeta, download, upload, createFile, ensureFolder, media, trash, permissions, whoAmI, signOut, viewLink };
 })();

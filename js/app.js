@@ -65,7 +65,7 @@
       S.user = await Drive.whoAmI().catch(() => null);
       if (S.user) $('userLine').textContent = `${S.user.displayName}\n${S.user.emailAddress}`;
       busy(`尋找「${CFG.FILE_NAME}」…`);
-      const f = await Drive.findByName(CFG.FILE_NAME);
+      const f = await findResumeFile();
       if (!f) {
         busy('');
         $('welcomeMsg').textContent = `找不到「${CFG.FILE_NAME}」,或帳號 ${S.user ? S.user.emailAddress : ''} 沒有權限。請確認共用雲端硬碟 ATK 的共用設定。`;
@@ -105,6 +105,15 @@
         if (v === 'chrome') location.href = `intent://${location.host}${location.pathname}${location.hash}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url)};end`;
         else if (v === 'copy') { try { await navigator.clipboard.writeText(url); toast('已複製網址,請貼到瀏覽器開啟'); } catch { toast(url, 8000); } }
       });
+  }
+
+  // 找 Project Resume.xlsx:FILE_ID 優先;依檔名找到多份時,取與附件資料夾同一個上層資料夾的那份
+  async function findResumeFile() {
+    if (CFG.FILE_ID) return Drive.getMeta(CFG.FILE_ID).catch(() => null);
+    const files = await Drive.findAllByName(CFG.FILE_NAME);
+    if (files.length < 2 || !CFG.UPLOAD_FOLDER_ID) return files[0] || null;
+    const home = await Drive.getMeta(CFG.UPLOAD_FOLDER_ID).then((m) => m.parents || []).catch(() => []);
+    return files.find((x) => (x.parents || []).some((p) => home.includes(p))) || files[0];
   }
 
   async function reload() {
@@ -2926,7 +2935,7 @@
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
     if (!S.ready || editing || Date.now() - hiddenAt < 180000) return;
-    try { await reload(); route(); } catch {}
+    try { await reload(); applyPerms(); route(); } catch {}
   });
 
   // ---------- 新版偵測:強制重新載入 ----------
