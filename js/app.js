@@ -2784,13 +2784,19 @@
     const box = $('permEditor');
     box.innerHTML = '';
     const body = h('div', {}, h('div', { class: 'empty small' }, '展開後載入人員名單…'));
-    let draft = null;
+    let draft = null, savedSnap = '';
+    // 要寫入的權限(只留有勾選的人);與 savedSnap 比較判斷是否還沒儲存
+    const toEntries = (list) => list.filter((p) => Perms.KEYS.some((k) => p[k.key]))
+      .map((p) => Object.fromEntries([['email', p.email], ...Perms.KEYS.map((k) => [k.key, !!p[k.key]])]));
+    const permEntries = () => toEntries(draft);
+    const snapOf = (list) => JSON.stringify(toEntries(list).sort((a, b) => a.email.localeCompare(b.email)));
     const panel = h('details', { class: 'panel list-panel' },
       h('summary', { class: 'panel-title' }, '權限'),
       h('div', { class: 'hint' }, '勾選每位人員可使用的功能;沒有勾選「專案管理檢視」或「設定」的人看不到該頁面。管理者固定擁有全部權限。設定存在 Excel「權限」工作表。'),
       body);
     const renderRows = () => {
       body.innerHTML = '';
+      const dirty = snapOf(draft) !== savedSnap;
       body.append(h('div', { class: 'list-items' }, ...draft.map((p) => {
         const admin = CFG.ADMINS.map((x) => x.toLowerCase()).includes(p.email);
         const boxes = Perms.KEYS.map((k) => {
@@ -2809,13 +2815,16 @@
           h('div', { class: 'perm-who' }, h('b', {}, p.who.name || p.email), p.who.ename ? h('span', { class: 'perm-ename' }, p.who.ename) : '',
             h('small', {}, [p.who.name ? p.email : '', admin ? '管理者' : p.role ? ROLE_LABELS[p.role] || p.role : '不在目前共用名單'].filter(Boolean).join('・'))),
           h('div', { class: 'perm-cbs' }, ...boxes));
-      })), h('div', { class: 'btn-row perm-save' }, h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: savePerms }, '儲存權限')));
+      })), h('div', { class: 'btn-row perm-save' },
+        dirty ? h('span', { class: 'perm-dirty' }, '⚠️ 權限已變更,尚未儲存(按「儲存權限」後才生效)') : null,
+        h('button', { type: 'button', class: 'btn btn-primary btn-sm' + (dirty ? ' dirty' : ''), onclick: savePerms }, '儲存權限')));
     };
     async function savePerms() {
-      const entries = draft.filter((p) => Perms.KEYS.some((k) => p[k.key]))
-        .map((p) => Object.fromEntries([['email', p.email], ...Perms.KEYS.map((k) => [k.key, !!p[k.key]])]));
+      const entries = permEntries();
       try {
         await commit('儲存權限…', (d) => { Perms.write(d.book, entries); });
+        savedSnap = snapOf(draft);
+        renderRows();
         applyPerms();
         toast('✅ 權限已儲存');
       } catch (err) {
@@ -2847,6 +2856,7 @@
       for (const e of staff.keys()) if (!byEmail.has(e)) byEmail.set(e, { email: e, role: '' });
       draft = [...byEmail.values()].map((p) => Object.assign(p, { who: staff.get(p.email) || {} }))
         .sort((a, b) => rank(a.role) - rank(b.role) || (a.who.name || a.email).localeCompare(b.who.name || b.email, 'zh-Hant'));
+      savedSnap = snapOf(saved || []);
       renderRows();
       if (note) body.prepend(h('div', { class: 'hint' }, note));
     });

@@ -517,7 +517,9 @@ body.wide-main main { max-width: none; }
 .perm-cb { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
 .perm-cb input { width: 18px; height: 18px; margin: 0; }
 .perm-cb:has(input:disabled) { cursor: default; opacity: .7; }
-.perm-save { justify-content: flex-end; margin-top: 12px; }
+.perm-save { justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.perm-dirty { flex: 1 1 200px; font-size: 13px; color: var(--warn); }
+.perm-save .btn.dirty { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 45%, transparent); }
 /* 專案管理「只能檢視」:隱藏新增/刪除/存檔類按鈕,表單不能點 */
 body.pm-ro #pmAdd, body.pm-ro #pmAddTrack, body.pm-ro #pmDelete, body.pm-ro #schedAdd, body.pm-ro #schedColors { display: none !important; }
 body.pm-ro :is(#pmFields, #pmTracks, #pmClosedBox, #schedHead, #schedItems) { pointer-events: none; }
