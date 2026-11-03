@@ -109,7 +109,7 @@
 
   // 找 Project Resume.xlsx:FILE_ID 優先;依檔名找到多份時,取與附件資料夾同一個上層資料夾的那份
   async function findResumeFile() {
-    if (CFG.FILE_ID) return Drive.getMeta(CFG.FILE_ID).catch(() => null);
+    if (CFG.FILE_ID) { const m = await Drive.getMeta(CFG.FILE_ID).catch(() => null); if (m) return m; } // 讀不到(ID 有誤或沒權限)時改依檔名找
     const files = await Drive.findAllByName(CFG.FILE_NAME);
     if (files.length < 2 || !CFG.UPLOAD_FOLDER_ID) return files[0] || null;
     const home = await Drive.getMeta(CFG.UPLOAD_FOLDER_ID).then((m) => m.parents || []).catch(() => []);

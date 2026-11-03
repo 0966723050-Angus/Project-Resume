@@ -14,7 +14,7 @@
  *   ?a=ding&id=<履歷編號>&k=<分享碼>          → 由釘釘群組機器人發送「標題=連結」訊息 → { ok }
  *   ?a=cal                                    → 依 Work List.xlsm 同步「已排定」項目到 Google 日曆 → { ok, created, updated, removed }
  */
-var FILE_ID = '';                       // 可填 Project Resume.xlsx 的檔案 ID(App 設定頁可複製);空白則依檔名搜尋
+var FILE_ID = '1dC9czmVBo1rFfRU_kWU3IPHOm0OU-pkR';                       // 可填 Project Resume.xlsx 的檔案 ID(App 設定頁可複製);空白則依檔名搜尋
 var FILE_NAME = 'Project Resume.xlsx';
 var SHEET = 'Project Resume';
 var COLS = {

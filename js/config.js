@@ -9,7 +9,7 @@ window.APP_CONFIG = {
   FILE_NAME: 'Project Resume.xlsx',
   // 檔案 ID(設定頁可複製);有填就直接開這份,不依檔名搜尋。空白時依檔名找,
   // 同名檔不只一份時(例如同仁自己雲端硬碟裡的副本)挑和附件資料夾同一層的那份
-  FILE_ID: '',
+  FILE_ID: '1dC9czmVBo1rFfRU_kWU3IPHOm0OU-pkR',
   // 圖片/附件上傳到與 Excel 同一資料夾下的此子資料夾(不存在時自動建立)
   UPLOAD_FOLDER: 'Project Resume 附件',
   // 附件資料夾 ID(資料夾網址 folders/ 後面那串);有填就直接用,其他同仁不需看得到 Excel 的上層資料夾
