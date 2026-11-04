@@ -2248,7 +2248,8 @@
     if (can('hoursAll')) {
       const cur = who.value;
       const me = myStaffName();
-      const names = [...new Set([...staffList().map((x) => x.name), ...hoursList().map((r) => r.name)].filter((n) => n && n !== me))]
+      // 只列公司人員(外包等不在名單的人不列入)
+      const names = [...new Set(staffList().map((x) => x.name).filter((n) => n && n !== me))]
         .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
       who.innerHTML = '';
       who.append(h('option', { value: '' }, me + '(本人)'), ...names.map((n) => h('option', { value: n }, n)));
@@ -2423,9 +2424,10 @@
     let nameEl;
     if (can('hoursAll')) {
       nameEl = h('select', {});
-      const names = [...new Set([myStaffName(), ...staffList().map((x) => x.name), name].filter(Boolean))];
+      // 只列公司人員;修改既有紀錄(例如外包的舊紀錄)時保留該紀錄的姓名
+      const names = [...new Set([myStaffName(), ...staffList().map((x) => x.name), hrEdit ? name : ''].filter(Boolean))];
       nameEl.append(...names.map((n) => h('option', { value: n }, n)));
-      nameEl.value = name || myStaffName();
+      nameEl.value = names.includes(name) ? name : myStaffName();
     } else {
       nameEl = h('input', { type: 'text', readonly: true });
       nameEl.value = name || myStaffName();
