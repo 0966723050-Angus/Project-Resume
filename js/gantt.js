@@ -17,7 +17,7 @@
   const C = {
     // 文字一律接近黑色(深色才清楚)
     frame: '#374151', border: '#9CA3AF', title: '#000000', sub: '#1F2937', text: '#000000', muted: '#1F2937',
-    head: '#E8EDF5', headText: '#000000', zebra: '#F7F9FC', day: '#EEF1F5', week: '#CBD2DC', month: '#8B95A5',
+    head: '#E8EDF5', headText: '#000000', zebra: '#F7F9FC', day: '#BCC4D0', week: '#8E98A8', month: '#5F6B7D', row: '#CBD2DC',
   };
 
   const utc = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null; };
@@ -76,7 +76,7 @@
     rect(L, top, R - L, MONTH_H + DATE_H, { fill: C.head });
     for (let i = 0; i < n; i++) if (i % 2 === 1) rect(L, rowsTop + i * rowH, R - L, rowH, { fill: C.zebra });
     // 每日細格線
-    if (dayW >= 2.4) for (let d = 1; d < days; d++) if (d % 7) line(chartX + d * dayW, rowsTop, chartX + d * dayW, tableBottom, C.day, 0.5);
+    if (dayW >= 2.4) for (let d = 1; d < days; d++) if (d % 7) line(chartX + d * dayW, rowsTop, chartX + d * dayW, tableBottom, C.day, 0.6);
     // 每週線 + 週一日期(置中對齊週一那一天)
     const weeks = [];
     for (let t = t0; t <= t1; t += 7 * DAY) weeks.push(t);
@@ -113,7 +113,7 @@
     const barH = Math.max(6, Math.min(34, rowH * 0.46));
     items.forEach((it, i) => {
       const y = rowsTop + i * rowH;
-      line(L, y + rowH, R, y + rowH, C.week, 0.5);
+      line(L, y + rowH, R, y + rowH, C.row, 0.5);
       // 項目名稱(太長時縮小字)
       let ls = labelSize;
       const name = it.name || '';
