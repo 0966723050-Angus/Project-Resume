@@ -535,12 +535,12 @@ function overdueFrom(remainGrid, pmGrid, today) {
       if ((!code && !name) || cellText(row, pc['結案']) === '是') return;
       for (var n = 1; ; n++) {
         var sfx = n === 1 ? '' : String(n);
-        var ci = { item: pc['追蹤確認事項' + sfx], progress: pc['進度與結果' + sfx], due: pc['期限' + sfx], status: pc['狀態' + sfx] };
+        var ci = { item: pc['追蹤確認事項' + sfx], progress: pc['進度與結果' + sfx], due: pc['期限' + sfx], status: pc['狀態' + sfx], owner: pc['追蹤負責人' + sfx] };
         if (!ci.item && !ci.progress && !ci.due && !ci.status) break;
         var item = cellText(row, ci.item), progress = cellText(row, ci.progress);
         var due = cellSerial(row, ci.due);
         if (isClosed(cellText(row, ci.status)) || due == null || due >= today) continue;
-        out.pm.push({ code: code, name: name, batch: cellText(row, pc['批次']), item: item || progress || '(未填事項)', due: serialYMD(due), days: today - due });
+        out.pm.push({ code: code, name: name, batch: cellText(row, pc['批次']), item: item || progress || '(未填事項)', owner: cellText(row, ci.owner), due: serialYMD(due), days: today - due });
       }
     });
   }
@@ -630,12 +630,12 @@ function pmReportFrom(pmGrid, today) {
       current: current, tracks: [] };
     for (var n = 1; ; n++) {
       var sfx = n === 1 ? '' : String(n);
-      var ci = { item: pc['追蹤確認事項' + sfx], progress: pc['進度與結果' + sfx], due: pc['期限' + sfx], status: pc['狀態' + sfx] };
+      var ci = { item: pc['追蹤確認事項' + sfx], progress: pc['進度與結果' + sfx], due: pc['期限' + sfx], status: pc['狀態' + sfx], owner: pc['追蹤負責人' + sfx] };
       if (!ci.item && !ci.progress && !ci.due && !ci.status) break;
       var item = cellText(row, ci.item), progress = cellText(row, ci.progress), status = cellText(row, ci.status);
       if ((!item && !progress) || isClosed(status)) continue;
       var due = cellSerial(row, ci.due);
-      p.tracks.push({ item: item || '(未填事項)', progress: progress, due: due == null ? '' : serialYMD(due), late: due != null && due < today ? today - due : 0, status: status || 'Open' });
+      p.tracks.push({ item: item || '(未填事項)', progress: progress, owner: cellText(row, ci.owner), due: due == null ? '' : serialYMD(due), late: due != null && due < today ? today - due : 0, status: status || 'Open' });
     }
     out.push(p);
   });
@@ -674,7 +674,7 @@ function pmReportText(list, remains) {
     var head = '■ ' + p.code + ' ' + p.name + (p.batch ? '(批次' + p.batch + ')' : '') + ' — 階段:' + (p.stage || '—') + (p.need ? ' / 需求日期 ' + p.need : '');
     var cur = '  現況:' + (p.current ? p.current.replace(/\s*\n\s*/g, ' / ') : '(未填)');
     var tr = '  [追蹤事項]\n' + (p.tracks.length ? p.tracks.map(function (t) {
-      return '  ・' + t.item.replace(/\s+/g, ' ') + (t.progress ? ' → ' + t.progress.replace(/\s+/g, ' ') : '') + (t.due ? '(期限 ' + t.due + (t.late ? ',逾期 ' + t.late + ' 天' : '') + ')' : '');
+      return '  ・' + t.item.replace(/\s+/g, ' ') + (t.progress ? ' → ' + t.progress.replace(/\s+/g, ' ') : '') + (t.owner ? ' / ' + t.owner : '') + (t.due ? '(期限 ' + t.due + (t.late ? ',逾期 ' + t.late + ' 天' : '') + ')' : '');
     }).join('\n') : '  ・(無 Open 追蹤事項)');
     var rm = g.of(p);
     var rt = rm.length ? '\n  [殘件事項]\n' + rm.map(function (x) { return '  ・' + remainLine(x, false); }).join('\n') : '';
@@ -708,9 +708,9 @@ function pmReportHtml(list, remains) {
       '<div style="padding:8px 10px;font-size:13px"><b>現況</b><br>' + (p.current ? br(p.current) : '<span style="color:#9ca3af">(未填)</span>') + '</div>';
     h += sub('追蹤事項(Open ' + p.tracks.length + ' 項)');
     if (p.tracks.length) {
-      h += '<table style="border-collapse:collapse;width:100%"><tr><th ' + th + '>追蹤確認事項</th><th ' + th + '>進度與結果</th><th ' + th + '>期限</th></tr>';
+      h += '<table style="border-collapse:collapse;width:100%"><tr><th ' + th + '>追蹤確認事項</th><th ' + th + '>進度與結果</th><th ' + th + '>負責人</th><th ' + th + '>期限</th></tr>';
       p.tracks.forEach(function (t) {
-        h += '<tr><td ' + td + '>' + br(t.item) + '</td><td ' + td + '>' + br(t.progress) + '</td><td ' + td + ' nowrap>' + (t.due || '—') +
+        h += '<tr><td ' + td + '>' + br(t.item) + '</td><td ' + td + '>' + br(t.progress) + '</td><td ' + td + '>' + htmlEsc(t.owner) + '</td><td ' + td + ' nowrap>' + (t.due || '—') +
           (t.late ? '<br><b style="color:#dc2626">逾期 ' + t.late + ' 天</b>' : '') + '</td></tr>';
       });
       h += '</table>';

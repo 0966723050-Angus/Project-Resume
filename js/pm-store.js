@@ -54,7 +54,7 @@
     for (let n = 1; ; n++) {
       const g = {};
       for (const t of PM.TRACK) if (byTitle[trackTitle(t, n)]) g[t.key] = byTitle[trackTitle(t, n)];
-      if (!Object.keys(g).length) break;
+      if (!PM.TRACK.some((t) => !t.lazy && g[t.key])) break;
       groups.push(g);
     }
     const cellVal = (row, ci, kind) => {
@@ -121,6 +121,14 @@
 
     // 追蹤事項組數不夠 → 新增標題欄(樣式、欄寬比照第 1 組)
     while (data.groups.length < rec.tracks.length) addGroup(book, doc, data);
+    // 追蹤事項的負責人等後加欄位:該組有值才建立(標題樣式、欄寬比照該組的追蹤確認事項)
+    rec.tracks.forEach((t, i) => {
+      const g = data.groups[i];
+      for (const tc of PM.TRACK) {
+        if (!tc.lazy || g[tc.key] || !String(t[tc.key] || '').trim()) continue;
+        g[tc.key] = addColumn(book, doc, data, trackTitle(tc, i + 1), g.item, 12);
+      }
+    });
     // 進度狀態等新欄位:有值才建立(接在最後一欄之後,標題樣式比照對應的日期欄)
     // 第一次用到時,缺少的狀態欄依設定順序一次建立,欄位才會排在一起
     const extras = PM.COLS.filter((c) => c.extra);
@@ -188,7 +196,7 @@
       const g = data.groups[i];
       if (!g) continue;
       const nt = rec.tracks[i] || {}, ot = (before.tracks && before.tracks[i]) || {};
-      for (const tc of PM.TRACK) if (!fresh || (nt[tc.key] ?? '') !== (ot[tc.key] ?? '')) setCell(g[tc.key], nt[tc.key], tc.kind);
+      for (const tc of PM.TRACK) if (!fresh || (nt[tc.key] ?? '') !== (ot[tc.key] ?? '')) setCell(g[tc.key], nt[tc.key], tc.kind, tc.lazy && g.item);
     }
     // 長文字時加高列高(不低於原本)
     let lines = 1;

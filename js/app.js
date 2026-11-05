@@ -1733,7 +1733,7 @@
         h('div', { class: 'sum-sec' }, h('div', { class: 'sum-label' }, '現況'), h('div', { class: 'sum-cur' + (p.current ? '' : ' muted') }, p.current || '(未填)')),
         h('div', { class: 'sum-sec' }, h('div', { class: 'sum-label' }, `追蹤事項(Open ${tracks.length} 項)`),
           tracks.length ? tracks.map((t) => h('a', { class: 'sum-item sum-link', href: '#/pm/' + p._row + '?from=sum&t=' + t._i }, h('div', { class: 'sum-main' }, t.item || '(未填事項)'),
-            t.progress ? h('div', { class: 'sum-prog' }, '→ ' + t.progress) : null, due(t.due))) : h('div', { class: 'muted' }, '(無 Open 追蹤事項)')),
+            t.progress ? h('div', { class: 'sum-prog' }, '→ ' + t.progress) : null, t.owner ? h('div', { class: 'sum-meta' }, '負責人 ' + t.owner) : null, due(t.due))) : h('div', { class: 'muted' }, '(無 Open 追蹤事項)')),
         rm.length ? h('div', { class: 'sum-sec' }, h('div', { class: 'sum-label' }, `殘件事項(未結案 ${rm.length} 項)`), rm.map((x) => remainItem(x, false))) : null));
     }
     if (others.length) box.append(h('div', { class: 'sum-card' }, h('div', { class: 'sum-head' }, h('div', { class: 'sum-title' }, `其他殘件事項(專案不在上列清單,${others.length} 項)`)),
@@ -1742,7 +1742,7 @@
     if (S.sumY) { const y = S.sumY; S.sumY = 0; setTimeout(() => window.scrollTo(0, y), 0); }
   }
 
-  const blankTrack = () => ({ item: '', progress: '', due: '', status: 'Open' });
+  const blankTrack = () => ({ item: '', progress: '', owner: '', due: '', status: 'Open' });
   // q:from=sum 由彙整頁進入(返回鍵回彙整頁);t=追蹤事項序號(展開並捲到該事項)
   async function openPm(id, q) {
     const from = q && q.get('from'), ti = q && q.get('t');
@@ -1912,6 +1912,7 @@
         h('div', { class: 'fields' },
           fText('追蹤確認事項', t, 'item', { multi: true }),
           fText('進度與結果', t, 'progress', { multi: true }),
+          fCombo('負責人', t, 'owner', 'owner'),
           fDate('期限', t, 'due'),
           fChips('狀態', t, 'status', CFG.STATUS_OPTIONS, {
             onChange: () => {

@@ -161,6 +161,8 @@ window.APP_CONFIG = {
       { key: 'progress', title: '進度與結果', kind: 'm' },
       { key: 'due', title: '期限', kind: 'd' },
       { key: 'status', title: '狀態', kind: 't' },
+      // 負責人:舊檔沒有此欄,第一次填寫時才在最後一欄之後建立(第 2 組起為「追蹤負責人2」…)
+      { key: 'owner', title: '追蹤負責人', kind: 't', lazy: true },
     ],
     EXTRA_START: 31, // AE
     CLOSED_OPTIONS: ['是', '否'],
