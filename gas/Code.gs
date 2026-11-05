@@ -607,7 +607,7 @@ function pmReport() {
   MailApp.sendEmail({
     to: NOTIFY_TO || Session.getEffectiveUser().getEmail(),
     subject: '【專案現況 ' + md + '】未結案專案 ' + list.length + ' 個、追蹤事項(Open)' + items + ' 項、殘件/追蹤 ' + remains.length + ' 項',
-    body: '【專案管理】\n' + pmReportText(list) + '\n\n【殘件/追蹤事項】' + remains.length + ' 項\n' + remainText(remains) + '\n\n' + APP_URL,
+    body: pmReportText(list, remains) + '\n\n' + APP_URL,
     htmlBody: pmReportHtml(list, remains),
     name: 'ATK專案履歷',
   });
@@ -656,28 +656,48 @@ function remainOpenFrom(grid, today) {
   out.sort(function (a, b) { return a.code < b.code ? -1 : a.code > b.code ? 1 : (a.dueN == null ? 1e9 : a.dueN) - (b.dueN == null ? 1e9 : b.dueN); });
   return out;
 }
-function remainText(list) {
-  if (!list.length) return '(無)';
-  return list.map(function (x) {
-    return '・' + x.code + ' ' + x.name + ':' + x.problem.replace(/\s+/g, ' ') + (x.progress ? ' → ' + x.progress.replace(/\s+/g, ' ') : '') +
-      (x.owner ? ' / ' + x.owner : '') + (x.due ? '(期限 ' + x.due + (x.late ? ',逾期 ' + x.late + ' 天' : '') + ')' : '');
-  }).join('\n');
+// 殘件依專案代號分到各專案下;專案不在未結案清單(或沒填代號)的放到 others
+function remainByProject(list, remains) {
+  var key = function (c) { return String(c || '').trim().toUpperCase(); };
+  var map = {}, others = [];
+  list.forEach(function (p) { if (p.code) map[key(p.code)] = []; });
+  (remains || []).forEach(function (x) { var k = key(x.code); if (k && map[k]) map[k].push(x); else others.push(x); });
+  return { of: function (p) { return (p.code && map[key(p.code)]) || []; }, others: others };
 }
-function pmReportText(list) {
-  if (!list.length) return '目前沒有未結案的專案。';
-  return list.map(function (p) {
+function remainLine(x, withCode) {
+  return (withCode ? x.code + ' ' + x.name + ':' : '') + x.problem.replace(/\s+/g, ' ') + (x.progress ? ' → ' + x.progress.replace(/\s+/g, ' ') : '') +
+    (x.owner ? ' / ' + x.owner : '') + (x.due ? '(期限 ' + x.due + (x.late ? ',逾期 ' + x.late + ' 天' : '') + ')' : '');
+}
+function pmReportText(list, remains) {
+  var g = remainByProject(list, remains);
+  var out = list.length ? list.map(function (p) {
     var head = '■ ' + p.code + ' ' + p.name + (p.batch ? '(批次' + p.batch + ')' : '') + ' — 階段:' + (p.stage || '—') + (p.need ? ' / 需求日期 ' + p.need : '');
     var cur = '  現況:' + (p.current ? p.current.replace(/\s*\n\s*/g, ' / ') : '(未填)');
-    var tr = p.tracks.length ? p.tracks.map(function (t) {
+    var tr = '  [追蹤事項]\n' + (p.tracks.length ? p.tracks.map(function (t) {
       return '  ・' + t.item.replace(/\s+/g, ' ') + (t.progress ? ' → ' + t.progress.replace(/\s+/g, ' ') : '') + (t.due ? '(期限 ' + t.due + (t.late ? ',逾期 ' + t.late + ' 天' : '') + ')' : '');
-    }).join('\n') : '  ・(無 Open 追蹤事項)';
-    return head + '\n' + cur + '\n' + tr;
-  }).join('\n\n');
+    }).join('\n') : '  ・(無 Open 追蹤事項)');
+    var rm = g.of(p);
+    var rt = rm.length ? '\n  [殘件事項]\n' + rm.map(function (x) { return '  ・' + remainLine(x, false); }).join('\n') : '';
+    return head + '\n' + cur + '\n' + tr + rt;
+  }).join('\n\n') : '目前沒有未結案的專案。';
+  if (g.others.length) out += '\n\n【其他殘件事項】(專案不在上列清單)\n' + g.others.map(function (x) { return '・' + remainLine(x, true); }).join('\n');
+  return out;
 }
 function pmReportHtml(list, remains) {
   var th = 'style="background:#1e40af;color:#fff;padding:6px 8px;text-align:left;font-size:13px;white-space:nowrap"';
   var td = 'style="border-bottom:1px solid #e5e7eb;padding:6px 8px;font-size:13px;vertical-align:top"';
   var br = function (s) { return htmlEsc(s).replace(/\n/g, '<br>'); };
+  var g = remainByProject(list, remains);
+  var sub = function (t) { return '<div style="padding:8px 10px 4px;font-size:13px"><b>' + t + '</b></div>'; };
+  var remainRows = function (rows, withCode) {
+    var r = '<table style="border-collapse:collapse;width:100%"><tr>' + (withCode ? '<th ' + th + '>專案</th>' : '') + '<th ' + th + '>問題描述</th><th ' + th + '>改善進度與結果</th><th ' + th + '>負責人</th><th ' + th + '>期限</th><th ' + th + '>狀態</th></tr>';
+    rows.forEach(function (x) {
+      r += '<tr>' + (withCode ? '<td ' + td + '><b>' + htmlEsc(x.code) + '</b><br>' + htmlEsc(x.name) + '</td>' : '') + '<td ' + td + '>' + br(x.problem) + '</td><td ' + td + '>' + br(x.progress) + '</td>' +
+        '<td ' + td + '>' + htmlEsc(x.owner) + (x.dept ? '<br><span style="color:#6b7280">' + htmlEsc(x.dept) + '</span>' : '') + '</td>' +
+        '<td ' + td + ' nowrap>' + (x.due || '—') + (x.late ? '<br><b style="color:#dc2626">逾期 ' + x.late + ' 天</b>' : '') + '</td><td ' + td + ' nowrap>' + htmlEsc(x.status) + '</td></tr>';
+    });
+    return r + '</table>';
+  };
   var h = '<div style="font-family:sans-serif;color:#111"><h3 style="margin:0 0 10px;font-size:17px">專案管理(未結案 ' + list.length + ' 個)</h3>';
   if (!list.length) h += '<p>目前沒有未結案的專案。</p>';
   list.forEach(function (p) {
@@ -686,6 +706,7 @@ function pmReportHtml(list, remains) {
       (p.batch ? '<span style="color:#6b7280">(批次' + htmlEsc(p.batch) + ')</span>' : '') +
       '<div style="font-size:13px;color:#374151;margin-top:2px">階段:<b>' + htmlEsc(p.stage || '—') + '</b>' + (p.need ? ' ・ 需求日期 ' + p.need : '') + '</div></div>' +
       '<div style="padding:8px 10px;font-size:13px"><b>現況</b><br>' + (p.current ? br(p.current) : '<span style="color:#9ca3af">(未填)</span>') + '</div>';
+    h += sub('追蹤事項(Open ' + p.tracks.length + ' 項)');
     if (p.tracks.length) {
       h += '<table style="border-collapse:collapse;width:100%"><tr><th ' + th + '>追蹤確認事項</th><th ' + th + '>進度與結果</th><th ' + th + '>期限</th></tr>';
       p.tracks.forEach(function (t) {
@@ -694,20 +715,11 @@ function pmReportHtml(list, remains) {
       });
       h += '</table>';
     } else h += '<div style="padding:0 10px 8px;font-size:13px;color:#9ca3af">(無 Open 追蹤事項)</div>';
+    var rm = g.of(p);
+    if (rm.length) h += sub('殘件事項(未結案 ' + rm.length + ' 項)') + remainRows(rm, false);
     h += '</div>';
   });
-  remains = remains || [];
-  h += '<h3 style="margin:24px 0 8px;font-size:17px">殘件/追蹤事項(未結案 ' + remains.length + ' 項)</h3>';
-  if (!remains.length) h += '<p style="color:#6b7280">(無)</p>';
-  else {
-    h += '<table style="border-collapse:collapse;width:100%"><tr><th ' + th + '>專案</th><th ' + th + '>問題描述</th><th ' + th + '>改善進度與結果</th><th ' + th + '>負責人</th><th ' + th + '>期限</th><th ' + th + '>狀態</th></tr>';
-    remains.forEach(function (x) {
-      h += '<tr><td ' + td + '><b>' + htmlEsc(x.code) + '</b><br>' + htmlEsc(x.name) + '</td><td ' + td + '>' + br(x.problem) + '</td><td ' + td + '>' + br(x.progress) + '</td>' +
-        '<td ' + td + '>' + htmlEsc(x.owner) + (x.dept ? '<br><span style="color:#6b7280">' + htmlEsc(x.dept) + '</span>' : '') + '</td>' +
-        '<td ' + td + ' nowrap>' + (x.due || '—') + (x.late ? '<br><b style="color:#dc2626">逾期 ' + x.late + ' 天</b>' : '') + '</td><td ' + td + ' nowrap>' + htmlEsc(x.status) + '</td></tr>';
-    });
-    h += '</table>';
-  }
+  if (g.others.length) h += '<h3 style="margin:24px 0 8px;font-size:17px">其他殘件事項(專案不在上列清單,' + g.others.length + ' 項)</h3>' + remainRows(g.others, true);
   return h + '<p style="margin-top:18px"><a href="' + APP_URL + '#/pm">專案管理</a> ・ <a href="' + APP_URL + '#/remain">殘件/追蹤事項</a></p></div>';
 }
 
