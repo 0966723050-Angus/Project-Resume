@@ -340,6 +340,16 @@
       d.changed.add('choice');
     });
   }
+  // 調整順序:dir = -1 上移 / +1 下移(下拉選單依此順序顯示;專案管理階段的順序也用於逾期判斷)
+  async function choiceMove(key, item, dir) {
+    await commit('調整順序…', (d) => {
+      const arr = d.choice.lists[key] || [];
+      const i = arr.indexOf(item), j = i + dir;
+      if (i < 0 || j < 0 || j >= arr.length) return;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+      d.changed.add('choice');
+    });
+  }
   async function choiceRemove(key, item) {
     await commit('更新選單…', (d) => {
       const L = d.choice.lists;
@@ -2856,6 +2866,8 @@
   }
   function renderListEditors() {
     const box = $('listEditors');
+    // 重畫後保持原本展開的面板
+    const opened = new Set([...box.querySelectorAll('details[data-key]')].filter((d) => d.open).map((d) => d.dataset.key));
     box.innerHTML = '';
     for (const L of CFG.LISTS) {
       const items = L.key === 'project' ? projDesc().filter((p) => !p.support) : (lists()[L.key] || []);
@@ -2891,9 +2903,17 @@
         continue;
       }
       const ul = h('div', { class: 'list-items' });
-      for (const it of items) {
+      items.forEach((it, idx) => {
         const label = L.key === 'project' ? h('span', {}, h('b', {}, it.code || '(無代號)'), ' ', it.name) : h('span', {}, it);
-        ul.append(h('div', { class: 'list-item' }, label, h('button', {
+        const move = (dir) => h('button', {
+          type: 'button', class: 'del-btn move-btn', 'aria-label': dir < 0 ? '上移' : '下移', title: dir < 0 ? '上移' : '下移',
+          disabled: dir < 0 ? idx === 0 : idx === items.length - 1,
+          onclick: async () => {
+            try { await choiceMove(L.key, it, dir); } catch (err) { toast(errMsg(err), 5000); }
+            renderListEditors();
+          },
+        }, dir < 0 ? '▲' : '▼');
+        ul.append(h('div', { class: 'list-item' }, label, ...(L.sortable ? [move(-1), move(1)] : []), h('button', {
           type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: async () => {
             const name = L.key === 'project' ? `${it.code} ${it.name}` : it;
             if (!(await confirmYes('刪除選單項目', `確定從「${L.label}」刪除「${name}」?\n(已填入資料的內容不受影響)`, '刪除', 'btn-danger'))) return;
@@ -2901,7 +2921,7 @@
             renderListEditors();
           },
         }, '🗑')));
-      }
+      });
       const inputs = L.key === 'project'
         ? [h('input', { type: 'text', placeholder: '專案代號' }), h('input', { type: 'text', placeholder: '專案名稱' })]
         : [h('input', { type: 'text', placeholder: '新增項目' })];
@@ -2913,8 +2933,9 @@
           renderListEditors();
         },
       }, '＋ 加入');
-      box.append(h('details', { class: 'panel list-panel' },
+      box.append(h('details', { class: 'panel list-panel', 'data-key': L.key, open: opened.has(L.key) || null },
         h('summary', { class: 'panel-title' }, `${L.label}`, h('span', { class: 'count' }, String(items.length))),
+        L.sortable ? h('div', { class: 'hint' }, L.key === 'pmStage' ? '以 ▲▼ 調整順序;下拉選單依此順序顯示,逾期判斷也依此順序(排在「現地安裝」之前視為未到現場)' : '以 ▲▼ 調整順序;下拉選單依此順序顯示') : null,
         ul, h('div', { class: 'add-row' + (L.key === 'project' ? ' two' : '') }, ...inputs, addBtn)));
     }
   }

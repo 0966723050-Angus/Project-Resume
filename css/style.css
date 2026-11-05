@@ -679,3 +679,7 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
 .sum-head { position: relative; padding-right: 30px; }
 a.sum-head::after { content: '›'; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 20px; }
 .panel.flash { outline: 3px solid var(--warn); outline-offset: 2px; transition: outline-color .4s; }
+
+.move-btn { font-size: 13px; color: var(--muted); padding: 6px 7px; }
+.move-btn:hover { background: var(--surface-2, #eef2f7); }
+.move-btn:disabled { opacity: .25; cursor: default; background: transparent; }
