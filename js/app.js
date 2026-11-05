@@ -1915,7 +1915,8 @@
 
   // ---------- 專案 Schedule(長條圖) ----------
   // 資料:Project Management.xlsx 同資料夾的 Project Schedule.json
-  //   { colors: { 工作項目: '#RRGGBB' }(各專案共用), schedules: { 專案代號: { title, start, end, items:[{name, days, start}] } } }
+  //   { colors: { 工作項目: '#RRGGBB' }(各專案共用), schedules: { 專案代號: { title, start, end, sat, sun, items:[{name, days, start}] } } }
+  //   sat/sun:假日出勤(週六/週日算上班日);沒勾時長條略過該天,工期也不計入
   async function schedLoad() {
     if (!S.sched) {
       const f = await Drive.findByName(CFG.PM.SCHED_FILE);
@@ -1994,7 +1995,17 @@
     // 收合時標題列顯示期間摘要
     const upSum = () => { $('schedHeadSum').textContent = (obj.start || obj.end) ? `${fmtDate(obj.start) || '?'} ~ ${fmtDate(obj.end) || '?'}` : ''; };
     upSum();
-    box.append(titleF, fDate('長條圖起始日期', obj, 'start', { onChange: upSum }), fDate('長條圖結束日期', obj, 'end', { onChange: upSum }),
+    // 假日出勤:勾選後該天算上班日;改變時重算各項目的結束日期
+    const wk = (key, label) => {
+      const cb = h('input', { type: 'checkbox' });
+      cb.checked = !!obj[key];
+      cb.addEventListener('change', () => { obj[key] = cb.checked; renderSchedItems(); markDirty(); });
+      return h('label', { class: 'chk-inline' }, cb, h('span', {}, label));
+    };
+    const offF = h('div', { class: 'field span2' }, h('span', { class: 'flabel' }, '假日出勤'),
+      h('div', { class: 'chk-row' }, wk('sat', '週六'), wk('sun', '週日')),
+      h('div', { class: 'hint-line' }, '沒勾選的假日,長條圖空白且不計入工期'));
+    box.append(titleF, fDate('長條圖起始日期', obj, 'start', { onChange: upSum }), fDate('長條圖結束日期', obj, 'end', { onChange: upSum }), offF,
       h('div', { class: 'hint-line span2' }, '長條圖以 7 天為一格,週一為每週第一天,日期標在每週一'));
     renderSchedItems();
   }
@@ -2007,7 +2018,7 @@
     obj.items.forEach((it, i) => {
       // 結束日期:工期/起始日期改變時自動算;也可手動選擇,此時改由工期自動調整(結束 − 起始 + 1 天)
       const endOut = h('input', { type: 'date', class: 'sched-end', 'aria-label': '結束日期' });
-      const upEnd = () => { endOut.value = Gantt.endOf(it) || ''; };
+      const upEnd = () => { endOut.value = Gantt.endOf(it, obj) || ''; };
       upEnd();
       const days = h('input', { type: 'number', min: '1', step: '1', inputmode: 'numeric', 'aria-label': '工期(天)', placeholder: '天' });
       days.value = it.days ?? '';
@@ -2017,14 +2028,17 @@
         const e = endOut.value;
         if (!e) { upEnd(); return; }
         if (!it.start) {
-          // 沒有起始日期:有工期就往回推起始日,沒有工期則從結束日當天開始(1 天)
+          // 沒有起始日期:有工期就往回推起始日(只算上班日),沒有工期則從結束日當天開始(1 天)
           const n = Math.max(1, Math.round(Number(it.days)) || 1);
-          it.start = new Date(toT(e) - (n - 1) * DAYMS).toISOString().slice(0, 10);
+          let t = toT(e), k = Gantt.workDays(e, e, obj) ? 1 : 0;
+          while (k < n) { t -= DAYMS; if (Gantt.workDays(new Date(t).toISOString().slice(0, 10), new Date(t).toISOString().slice(0, 10), obj)) k++; }
+          it.start = new Date(t).toISOString().slice(0, 10);
           start.value = it.start;
           it.days = String(n);
         } else {
-          const n = Math.round((toT(e) - toT(it.start)) / DAYMS) + 1;
-          if (n < 1) { toast('結束日期不能早於起始日期'); upEnd(); return; }
+          if (toT(e) < toT(it.start)) { toast('結束日期不能早於起始日期'); upEnd(); return; }
+          const n = Gantt.workDays(it.start, e, obj);
+          if (n < 1) { toast('起始到結束之間沒有上班日'); upEnd(); return; }
           it.days = String(n);
         }
         days.value = it.days;
@@ -2110,7 +2124,8 @@
     const items = editing.obj.items;
     const prev = items[items.length - 1];
     // 新項目的起始日預設接在上一項結束之後
-    const next = prev && Gantt.endOf(prev) ? addDays(Gantt.endOf(prev), 1) : (editing.obj.start || '');
+    const o = editing.obj;
+    const next = prev && Gantt.endOf(prev, o) ? Gantt.nextWork(addDays(Gantt.endOf(prev, o), 1), o) : (o.start || '');
     items.push({ name: '', days: '', start: next });
     renderSchedItems();
     markDirty();
@@ -2120,7 +2135,7 @@
 
   const schedData = () => {
     const o = editing.obj;
-    return { title: o.title, start: o.start, end: o.end, items: o.items.filter((it) => it.name || it.start || it.days) };
+    return { title: o.title, start: o.start, end: o.end, sat: !!o.sat, sun: !!o.sun, items: o.items.filter((it) => it.name || it.start || it.days) };
   };
   let shownChart = null; // 目前畫面上的圖(換顏色時用它重畫)
   function renderChart(d) {
@@ -2191,7 +2206,7 @@
     if (!can('pmEdit')) { toast('沒有專案管理的編輯權限'); return false; }
     const obj = editing.obj;
     const rec = {
-      title: obj.title, start: obj.start, end: obj.end, updated: new Date().toISOString(),
+      title: obj.title, start: obj.start, end: obj.end, sat: !!obj.sat, sun: !!obj.sun, updated: new Date().toISOString(),
       items: obj.items.filter((it) => it.name || it.start || it.days).map((it) => ({ name: it.name, days: it.days, start: it.start })),
     };
     try {

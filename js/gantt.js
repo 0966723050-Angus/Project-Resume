@@ -23,7 +23,19 @@
   const utc = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null; };
   const iso = (t) => new Date(t).toISOString().slice(0, 10);
   const mondayOf = (t) => t - (((new Date(t).getUTCDay() + 6) % 7) * DAY);
-  const endOf = (it) => { const s = utc(it.start); const d = Number(it.days); return s != null && d > 0 ? s + (Math.round(d) - 1) * DAY : null; };
+  // 假日出勤:opt.sat / opt.sun 勾選時週六/週日算上班日,否則該天不畫長條、也不計入工期
+  const isWork = (t, opt) => { const w = new Date(t).getUTCDay(); return w === 6 ? !!(opt && opt.sat) : w === 0 ? !!(opt && opt.sun) : true; };
+  const firstWork = (t, opt) => { while (!isWork(t, opt)) t += DAY; return t; };
+  // 結束日 = 從起始日起算第 days 個上班日
+  const endOf = (it, opt) => {
+    const s = utc(it.start); const d = Math.round(Number(it.days));
+    if (s == null || !(d > 0)) return null;
+    let t = firstWork(s, opt);
+    for (let n = 1; n < d; n++) t = firstWork(t + DAY, opt);
+    return t;
+  };
+  // 起始~結束(含)之間的上班日數
+  const workCount = (a, b, opt) => { let n = 0; for (let t = a; t <= b; t += DAY) if (isWork(t, opt)) n++; return n; };
   const ymd = (t) => { const d = new Date(t); return `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`; };
   // 顏色依工作項目名稱決定(未設定時:預設清單的順序;其他項目依名稱雜湊),各專案一致
   function colorFor(name, colors) {
@@ -41,7 +53,7 @@
     const items = (data.items || []).filter((it) => it.name || it.start);
     let s = utc(data.start), e = utc(data.end);
     const starts = items.map((it) => utc(it.start)).filter((x) => x != null);
-    const ends = items.map(endOf).filter((x) => x != null);
+    const ends = items.map((it) => endOf(it, data)).filter((x) => x != null);
     if (s == null) s = starts.length ? Math.min(...starts) : Date.now();
     if (e == null) e = ends.length ? Math.max(...ends) : s + 27 * DAY;
     if (e < s) e = s;
@@ -59,7 +71,10 @@
     const L = FRAME + PAD, R = W - FRAME - PAD;
     // 標題 + 期間
     text(W / 2, FRAME + PAD + 24, titleOf(data), 26, { anchor: 'middle', color: C.title });
-    text(W / 2, FRAME + PAD + 46, `${ymd(t0)}  ~  ${ymd(t1)}`, 11.5, { anchor: 'middle', color: C.sub });
+    // 期間:長條圖實際的起點(最早的長條)~終點(最晚的長條)
+    const barS = items.map((it) => (utc(it.start) == null || endOf(it, data) == null ? null : firstWork(utc(it.start), data))).filter((x) => x != null);
+    const rs = barS.length ? Math.min(...barS) : s, re = ends.length ? Math.max(...ends) : e;
+    text(W / 2, FRAME + PAD + 46, `${ymd(rs)}  ~  ${ymd(re)}`, 11.5, { anchor: 'middle', color: C.sub });
 
     // 表格
     const top = FRAME + PAD + 64;
@@ -120,11 +135,22 @@
       while (ls > 7 && measure(name, ls) > LABEL_W - 24) ls -= 0.5;
       text(L + 12, y + rowH / 2 + ls * 0.36, name, ls, { color: C.text });
       // 長條(圓角)+ 工期
-      const a = utc(it.start), b = endOf(it);
-      if (a == null || b == null || b < t0 || a > t1) return;
-      const x0 = xOf(Math.max(a, t0)), x1 = xOf(Math.min(b, t1)) + dayW;
-      const bw = Math.max(2, x1 - x0);
-      rect(x0, y + (rowH - barH) / 2, bw, barH, { fill: colorFor(name, colors), r: Math.min(4, barH / 2, bw / 2) });
+      const a0 = utc(it.start), b = endOf(it, data);
+      if (a0 == null || b == null) return;
+      const a = firstWork(a0, data);
+      if (b < t0 || a > t1) return;
+      const segs = [];
+      for (let t = Math.max(a, t0); t <= Math.min(b, t1); t += DAY) {
+        if (!isWork(t, data)) continue;
+        const last = segs[segs.length - 1];
+        if (last && last.b === t - DAY) last.b = t; else segs.push({ a: t, b: t });
+      }
+      if (!segs.length) return;
+      for (const g of segs) {
+        const sx = xOf(g.a), sw = Math.max(2, xOf(g.b) + dayW - sx);
+        rect(sx, y + (rowH - barH) / 2, sw, barH, { fill: colorFor(name, colors), r: Math.min(4, barH / 2, sw / 2) });
+      }
+      const x0 = xOf(segs[0].a), x1 = xOf(segs[segs.length - 1].b) + dayW;
       const dur = `${Math.round(Number(it.days))}天`;
       const ds = Math.max(8, Math.min(10.5, barH * 0.55));
       const dw = measure(dur, ds);
@@ -228,5 +254,12 @@
     return doc.save({ useObjectStreams: false });
   }
 
-  window.Gantt = { svg, pdf, prefetch, endOf: (it) => { const e = endOf(it); return e == null ? '' : iso(e); }, colorFor, PALETTE, titleOf };
+  window.Gantt = {
+    svg, pdf, prefetch, colorFor, PALETTE, titleOf,
+    endOf: (it, opt) => { const e = endOf(it, opt); return e == null ? '' : iso(e); },
+    // 起始~結束日期(yyyy-mm-dd)之間的上班日數
+    workDays: (a, b, opt) => { const x = utc(a), y = utc(b); return x == null || y == null || y < x ? 0 : workCount(x, y, opt); },
+    // 該日(或之後)的第一個上班日
+    nextWork: (d, opt) => { const t = utc(d); return t == null ? '' : iso(firstWork(t, opt)); },
+  };
 })();

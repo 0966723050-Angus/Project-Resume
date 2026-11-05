@@ -646,3 +646,8 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
   #hoursView #hrMonth, #hoursView #hrWho { flex: 1 1 40%; min-width: 0; }
   #hoursView #hrStatsBtn, #hoursView #hrOffBtn { flex: 1 1 40%; }
 }
+
+/* Schedule 假日出勤 */
+.chk-row { display: flex; gap: 22px; flex-wrap: wrap; padding: 4px 0; }
+.chk-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 15px; cursor: pointer; }
+.chk-inline input { width: 20px; height: 20px; accent-color: var(--primary); }
