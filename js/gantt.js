@@ -214,7 +214,7 @@
   async function pdf(data, colors) {
     await loadScript(PDF_LIB);
     await loadScript(FONTKIT);
-    const { PDFDocument, rgb } = window.PDFLib;
+    const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
     const doc = await PDFDocument.create();
     doc.registerFontkit(window.fontkit);
     // 關閉連字(ff 等),避免字母被合併成一個字;字型名稱每次不同,
@@ -222,6 +222,12 @@
     const font = await doc.embedFont((await loadFont()).slice(0), {
       subset: true, customName: 'NotoSansTC-Bold-' + Date.now().toString(36), features: { liga: false, clig: false, dlig: false },
     });
+    // 英數字改用 PDF 內建的 Helvetica-Bold:pdf-lib 子集化 Noto CJK(CFF)字型時,
+    // 部分英文字母(P、I、T、o…)的字形會遺失而變成空白;中文字仍用 Noto Sans TC
+    const latin = await doc.embedFont(StandardFonts.HelveticaBold);
+    const runs = (s) => String(s).match(/[\x20-\x7e]+|[^\x20-\x7e]+/g) || [];
+    const fontOf = (r) => (/^[\x20-\x7e]/.test(r) ? latin : font);
+    const widthOf = (s, size) => runs(s).reduce((w, r) => w + fontOf(r).widthOfTextAtSize(r, size), 0);
     const title = titleOf(data);
     doc.setTitle(title);
     doc.setCreator('ATK專案履歷');
@@ -229,7 +235,7 @@
     const page = doc.addPage([W, H]);
     const Y = (y) => H - y; // 版面座標(上→下) → PDF 座標(下→上)
     const col = (c) => { const m = /^#?([0-9a-f]{6})$/i.exec(c || ''); const v = m ? parseInt(m[1], 16) : 0; return rgb((v >> 16 & 255) / 255, (v >> 8 & 255) / 255, (v & 255) / 255); };
-    const { items } = build(data, colors, (s, size) => font.widthOfTextAtSize(String(s), size));
+    const { items } = build(data, colors, widthOf);
     for (const p of items) {
       if (p.t === 'rect') {
         if (p.r && p.fill) {
@@ -246,9 +252,13 @@
       } else if (p.t === 'line') {
         page.drawLine({ start: { x: p.x1, y: Y(p.y1) }, end: { x: p.x2, y: Y(p.y2) }, color: col(p.color), thickness: p.w });
       } else {
-        const tw = font.widthOfTextAtSize(p.s, p.size);
-        const x = p.anchor === 'middle' ? p.x - tw / 2 : p.anchor === 'end' ? p.x - tw : p.x;
-        page.drawText(p.s, { x, y: Y(p.y), size: p.size, font, color: col(p.color) });
+        const tw = widthOf(p.s, p.size);
+        let x = p.anchor === 'middle' ? p.x - tw / 2 : p.anchor === 'end' ? p.x - tw : p.x;
+        for (const r of runs(p.s)) {
+          const f = fontOf(r);
+          page.drawText(r, { x, y: Y(p.y), size: p.size, font: f, color: col(p.color) });
+          x += f.widthOfTextAtSize(r, p.size);
+        }
       }
     }
     return doc.save({ useObjectStreams: false });
