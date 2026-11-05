@@ -209,12 +209,46 @@
     }
     return fontPromise;
   }
+  // 修正 @pdf-lib/fontkit 1.1.1 的 CFF 子集化錯誤:CID 字型(Noto CJK)的英文與中文在不同的 FD(字型字典),
+  // 原程式把每個字都記到「最後新增的 FD」,中英交錯時英文字被配到錯的 FD/副程式而變空白(P、I、T、o…)。
+  // 這裡改成依各字實際所屬的 FD 記錄
+  function patchCffSubset(fkFont) {
+    let P;
+    try { P = Object.getPrototypeOf(fkFont.createSubset()); } catch { return; }
+    if (!P || typeof P.subsetFontdict !== 'function' || P.__fdFixed) return;
+    P.subsetFontdict = function (top) {
+      top.FDArray = [];
+      top.FDSelect = { version: 0, fds: [] };
+      const idx = {}, used = [];
+      for (const g of this.glyphs) {
+        const fd = this.cff.fdForGlyph(g);
+        if (fd == null) continue;
+        if (!(fd in idx)) {
+          idx[fd] = top.FDArray.length;
+          top.FDArray.push(Object.assign({}, this.cff.topDict.FDArray[fd]));
+          used.push({});
+        }
+        top.FDSelect.fds.push(idx[fd]);
+        const glyph = this.font.getGlyph(g);
+        void glyph.path; // 解析字形,取得用到的副程式
+        for (const k in glyph._usedSubrs) used[idx[fd]][k] = true;
+      }
+      top.FDArray.forEach((d, i) => {
+        delete d.FontName;
+        if (d.Private && d.Private.Subrs) {
+          d.Private = Object.assign({}, d.Private);
+          d.Private.Subrs = this.subsetSubrs(d.Private.Subrs, used[i]);
+        }
+      });
+    };
+    P.__fdFixed = true;
+  }
   function prefetch() { loadFont().catch(() => {}); loadScript(PDF_LIB).catch(() => {}); loadScript(FONTKIT).catch(() => {}); }
 
   async function pdf(data, colors) {
     await loadScript(PDF_LIB);
     await loadScript(FONTKIT);
-    const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
+    const { PDFDocument, rgb } = window.PDFLib;
     const doc = await PDFDocument.create();
     doc.registerFontkit(window.fontkit);
     // 關閉連字(ff 等),避免字母被合併成一個字;字型名稱每次不同,
@@ -222,12 +256,7 @@
     const font = await doc.embedFont((await loadFont()).slice(0), {
       subset: true, customName: 'NotoSansTC-Bold-' + Date.now().toString(36), features: { liga: false, clig: false, dlig: false },
     });
-    // 英數字改用 PDF 內建的 Helvetica-Bold:pdf-lib 子集化 Noto CJK(CFF)字型時,
-    // 部分英文字母(P、I、T、o…)的字形會遺失而變成空白;中文字仍用 Noto Sans TC
-    const latin = await doc.embedFont(StandardFonts.HelveticaBold);
-    const runs = (s) => String(s).match(/[\x20-\x7e]+|[^\x20-\x7e]+/g) || [];
-    const fontOf = (r) => (/^[\x20-\x7e]/.test(r) ? latin : font);
-    const widthOf = (s, size) => runs(s).reduce((w, r) => w + fontOf(r).widthOfTextAtSize(r, size), 0);
+    patchCffSubset(font.embedder && font.embedder.font);
     const title = titleOf(data);
     doc.setTitle(title);
     doc.setCreator('ATK專案履歷');
@@ -235,7 +264,7 @@
     const page = doc.addPage([W, H]);
     const Y = (y) => H - y; // 版面座標(上→下) → PDF 座標(下→上)
     const col = (c) => { const m = /^#?([0-9a-f]{6})$/i.exec(c || ''); const v = m ? parseInt(m[1], 16) : 0; return rgb((v >> 16 & 255) / 255, (v >> 8 & 255) / 255, (v & 255) / 255); };
-    const { items } = build(data, colors, widthOf);
+    const { items } = build(data, colors, (t, size) => font.widthOfTextAtSize(String(t), size));
     for (const p of items) {
       if (p.t === 'rect') {
         if (p.r && p.fill) {
@@ -252,13 +281,9 @@
       } else if (p.t === 'line') {
         page.drawLine({ start: { x: p.x1, y: Y(p.y1) }, end: { x: p.x2, y: Y(p.y2) }, color: col(p.color), thickness: p.w });
       } else {
-        const tw = widthOf(p.s, p.size);
-        let x = p.anchor === 'middle' ? p.x - tw / 2 : p.anchor === 'end' ? p.x - tw : p.x;
-        for (const r of runs(p.s)) {
-          const f = fontOf(r);
-          page.drawText(r, { x, y: Y(p.y), size: p.size, font: f, color: col(p.color) });
-          x += f.widthOfTextAtSize(r, p.size);
-        }
+        const tw = font.widthOfTextAtSize(p.s, p.size);
+        const x = p.anchor === 'middle' ? p.x - tw / 2 : p.anchor === 'end' ? p.x - tw : p.x;
+        page.drawText(p.s, { x, y: Y(p.y), size: p.size, font, color: col(p.color) });
       }
     }
     return doc.save({ useObjectStreams: false });
