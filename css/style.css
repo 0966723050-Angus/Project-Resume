@@ -446,6 +446,7 @@ input[type="date"]::-webkit-date-and-time-value, input[type="datetime-local"]::-
 /* 專案管理列表:專案下拉、階段顏色、需求日期 */
 .pm-pick { display: block; width: 100%; margin: 8px 0 0; padding: 10px 12px; font-size: 15px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); }
 .chip.stage-chip { color: #fff; font-weight: 700; }
+.stage-color { flex: none; width: 34px; height: 28px; padding: 0 2px; border: 1px solid var(--border); border-radius: 6px; background: transparent; cursor: pointer; }
 .need-date { margin-top: 4px; font-size: 13.5px; font-weight: 700; color: var(--primary, #1d4ed8); }
 .need-date.late { color: #dc2626; }
 .need-date.late::after { content: ' (已逾期)'; font-weight: 400; }

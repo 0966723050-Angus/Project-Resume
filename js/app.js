@@ -349,6 +349,14 @@
       d.changed.add('choice');
     });
   }
+  async function choiceStageColor(stage, hex) {
+    await commit('儲存顏色…', (d) => {
+      const L = d.choice.lists;
+      L.pmStageColor = (L.pmStageColor || []).filter((v) => v.slice(0, v.lastIndexOf('=')).trim() !== stage);
+      if (hex) L.pmStageColor.push(stage + '=' + hex);
+      d.changed.add('choice');
+    });
+  }
   async function choiceRemove(key, item) {
     await commit('更新選單…', (d) => {
       const L = d.choice.lists;
@@ -1647,7 +1655,23 @@
   }
   // 階段顏色:預設清單固定配色,其他依名稱雜湊
   const STAGE_COLORS = ['#64748b', '#2563eb', '#7c3aed', '#c2410c', '#0891b2', '#16a34a', '#db2777', '#0d9488', '#ca8a04', '#4f46e5', '#9f1239', '#475569'];
+  // 使用者在「設定 → 專案管理階段」選的顏色:Choice「管理階段顏色」欄,每格「階段=#色碼」
+  const stageColorMap = () => {
+    const m = {};
+    for (const v of (S.data && lists().pmStageColor) || []) {
+      const k = v.lastIndexOf('=');
+      if (k > 0 && /^#[0-9a-f]{6}$/i.test(v.slice(k + 1).trim())) m[v.slice(0, k).trim()] = v.slice(k + 1).trim();
+    }
+    return m;
+  };
+  // 淺色底配黑字,深色底配白字
+  const textOn = (hex) => {
+    const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    return 0.299 * r + 0.587 * g + 0.114 * b > 165 ? '#111827' : '#fff';
+  };
   function stageColor(s) {
+    const pick = stageColorMap()[s];
+    if (pick) return pick;
     const i = CFG.CHOICE_DEFAULTS.pmStage.indexOf(s);
     if (i >= 0) return STAGE_COLORS[i % STAGE_COLORS.length];
     let n = 0; for (const ch of String(s)) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
@@ -1662,7 +1686,7 @@
     const i = L.indexOf(r.stage);
     return i >= 0 && i < L.indexOf('現地安裝');
   }
-  const stageChip = (s) => h('span', { class: 'chip stage-chip', style: `background:${stageColor(s)};border-color:${stageColor(s)}` }, s);
+  const stageChip = (s) => { const c = stageColor(s); return h('span', { class: 'chip stage-chip', style: `background:${c};border-color:${c};color:${textOn(c)}` }, s); };
   function renderPmList() {
     const q = $('pmSearch').value.trim();
     const openOnly = $('pmOpenOnly').checked;
@@ -2906,7 +2930,8 @@
       items.forEach((it) => {
         const label = L.key === 'project' ? h('span', {}, h('b', {}, it.code || '(無代號)'), ' ', it.name) : h('span', {}, it);
         ul.append(h('div', { class: 'list-item', 'data-val': L.sortable ? it : null },
-          sorter && sorter.touch ? h('span', { class: 'drag-handle', 'aria-label': '按住拖曳排序' }, '☰') : null, label, h('button', {
+          sorter && sorter.touch ? h('span', { class: 'drag-handle', 'aria-label': '按住拖曳排序' }, '☰') : null,
+          L.key === 'pmStage' ? stageColorInput(it) : null, label, h('button', {
           type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: async () => {
             const name = L.key === 'project' ? `${it.code} ${it.name}` : it;
             if (!(await confirmYes('刪除選單項目', `確定從「${L.label}」刪除「${name}」?\n(已填入資料的內容不受影響)`, '刪除', 'btn-danger'))) return;
@@ -2929,10 +2954,19 @@
       box.append(h('details', { class: 'panel list-panel', 'data-key': L.key, open: opened.has(L.key) || null },
         h('summary', { class: 'panel-title' }, `${L.label}`, h('span', { class: 'count' }, String(items.length))),
         sorter ? h('div', { class: 'hint' }, (sorter.touch ? '按住左側 ☰ 上下拖曳調整順序' : '點選項目後,用 ▲▼ 連續點擊移動') + ';下拉選單依此順序顯示' +
-          (L.key === 'pmStage' ? ',逾期判斷也依此順序(排在「現地安裝」之前視為未到現場)' : '')) : null,
+          (L.key === 'pmStage' ? ',逾期判斷也依此順序(排在「現地安裝」之前視為未到現場)。點左側色塊可選擇該階段在專案管理卡片上的顏色' : '')) : null,
         sorter ? sorter.bar : null,
         ul, h('div', { class: 'add-row' + (L.key === 'project' ? ' two' : '') }, ...inputs, addBtn)));
     }
+  }
+  // 專案管理階段顏色:點色塊選色,選定即存檔(專案管理卡片的階段標籤使用此顏色)
+  function stageColorInput(stage) {
+    const inp = h('input', { type: 'color', class: 'stage-color', title: '選擇「' + stage + '」的顏色', 'aria-label': stage + ' 顏色' });
+    inp.value = stageColor(stage);
+    inp.addEventListener('change', async () => {
+      try { await choiceStageColor(stage, inp.value); toast('✅ 「' + stage + '」顏色已儲存'); } catch (err) { toast('儲存失敗:' + errMsg(err), 5000); inp.value = stageColor(stage); }
+    });
+    return inp;
   }
   // 清單排序:手機(觸控)按住 ☰ 拖曳;電腦點選項目後用一組 ▲▼ 連續移動。移動後停 0.8 秒才一次存檔
   function makeSorter(key, ul) {
@@ -3008,7 +3042,7 @@
       save();
     };
     ul.addEventListener('click', (e) => {
-      if (e.target.closest('button')) return;
+      if (e.target.closest('button, input')) return;
       const el = e.target.closest('.list-item');
       if (!el) return;
       sel = sel === el ? null : el;
