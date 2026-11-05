@@ -340,13 +340,12 @@
       d.changed.add('choice');
     });
   }
-  // 調整順序:dir = -1 上移 / +1 下移(下拉選單依此順序顯示;專案管理階段的順序也用於逾期判斷)
-  async function choiceMove(key, item, dir) {
-    await commit('調整順序…', (d) => {
+  // 調整順序:order = 新的完整順序(下拉選單依此順序顯示;專案管理階段的順序也用於逾期判斷)
+  async function choiceOrder(key, order) {
+    await commit('儲存順序…', (d) => {
       const arr = d.choice.lists[key] || [];
-      const i = arr.indexOf(item), j = i + dir;
-      if (i < 0 || j < 0 || j >= arr.length) return;
-      [arr[i], arr[j]] = [arr[j], arr[i]];
+      const rest = arr.filter((v) => !order.includes(v)); // 其他裝置剛加入的項目保留在最後
+      d.choice.lists[key] = [...order.filter((v) => arr.includes(v)), ...rest];
       d.changed.add('choice');
     });
   }
@@ -2902,18 +2901,12 @@
           }, '＋ 加入'))));
         continue;
       }
-      const ul = h('div', { class: 'list-items' });
-      items.forEach((it, idx) => {
+      const ul = h('div', { class: 'list-items' + (L.sortable ? ' sortable' : '') });
+      const sorter = L.sortable ? makeSorter(L.key, ul) : null;
+      items.forEach((it) => {
         const label = L.key === 'project' ? h('span', {}, h('b', {}, it.code || '(無代號)'), ' ', it.name) : h('span', {}, it);
-        const move = (dir) => h('button', {
-          type: 'button', class: 'del-btn move-btn', 'aria-label': dir < 0 ? '上移' : '下移', title: dir < 0 ? '上移' : '下移',
-          disabled: dir < 0 ? idx === 0 : idx === items.length - 1,
-          onclick: async () => {
-            try { await choiceMove(L.key, it, dir); } catch (err) { toast(errMsg(err), 5000); }
-            renderListEditors();
-          },
-        }, dir < 0 ? '▲' : '▼');
-        ul.append(h('div', { class: 'list-item' }, label, ...(L.sortable ? [move(-1), move(1)] : []), h('button', {
+        ul.append(h('div', { class: 'list-item', 'data-val': L.sortable ? it : null },
+          sorter && sorter.touch ? h('span', { class: 'drag-handle', 'aria-label': '按住拖曳排序' }, '☰') : null, label, h('button', {
           type: 'button', class: 'del-btn', 'aria-label': '刪除', onclick: async () => {
             const name = L.key === 'project' ? `${it.code} ${it.name}` : it;
             if (!(await confirmYes('刪除選單項目', `確定從「${L.label}」刪除「${name}」?\n(已填入資料的內容不受影響)`, '刪除', 'btn-danger'))) return;
@@ -2935,9 +2928,93 @@
       }, '＋ 加入');
       box.append(h('details', { class: 'panel list-panel', 'data-key': L.key, open: opened.has(L.key) || null },
         h('summary', { class: 'panel-title' }, `${L.label}`, h('span', { class: 'count' }, String(items.length))),
-        L.sortable ? h('div', { class: 'hint' }, L.key === 'pmStage' ? '以 ▲▼ 調整順序;下拉選單依此順序顯示,逾期判斷也依此順序(排在「現地安裝」之前視為未到現場)' : '以 ▲▼ 調整順序;下拉選單依此順序顯示') : null,
+        sorter ? h('div', { class: 'hint' }, (sorter.touch ? '按住左側 ☰ 上下拖曳調整順序' : '點選項目後,用 ▲▼ 連續點擊移動') + ';下拉選單依此順序顯示' +
+          (L.key === 'pmStage' ? ',逾期判斷也依此順序(排在「現地安裝」之前視為未到現場)' : '')) : null,
+        sorter ? sorter.bar : null,
         ul, h('div', { class: 'add-row' + (L.key === 'project' ? ' two' : '') }, ...inputs, addBtn)));
     }
+  }
+  // 清單排序:手機(觸控)按住 ☰ 拖曳;電腦點選項目後用一組 ▲▼ 連續移動。移動後停 0.8 秒才一次存檔
+  function makeSorter(key, ul) {
+    const touch = matchMedia('(pointer: coarse)').matches;
+    const order = () => [...ul.children].map((el) => el.dataset.val).filter((v) => v != null);
+    let saved = JSON.stringify(order()), timer = 0, chain = Promise.resolve();
+    const status = h('span', { class: 'sort-status' });
+    const save = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const o = order();
+        if (JSON.stringify(o) === saved) return;
+        status.textContent = '儲存中…';
+        chain = chain.then(() => choiceOrder(key, o)).then(() => { saved = JSON.stringify(o); status.textContent = '✓ 已儲存'; },
+          (err) => { status.textContent = ''; toast('順序儲存失敗:' + errMsg(err), 5000); renderListEditors(); });
+      }, touch ? 0 : 800);
+    };
+    if (touch) {
+      // 拖曳:按住 ☰ 上下移動,經過其他項目的中線就交換位置;靠近畫面上下緣時自動捲動
+      let drag = null;
+      ul.addEventListener('pointerdown', (e) => {
+        const hd = e.target.closest('.drag-handle');
+        if (!hd) return;
+        e.preventDefault();
+        const el = hd.closest('.list-item');
+        drag = { el, id: e.pointerId, y: e.clientY };
+        el.classList.add('dragging');
+        hd.setPointerCapture(e.pointerId);
+        const tick = () => {
+          if (!drag) return;
+          const edge = 70, H = window.innerHeight;
+          if (drag.y < edge) window.scrollBy(0, -8); else if (drag.y > H - edge) window.scrollBy(0, 8);
+          place();
+          drag.raf = setTimeout(tick, 16);
+        };
+        tick();
+      });
+      const place = () => {
+        const { el, y } = drag;
+        const prev = el.previousElementSibling, next = el.nextElementSibling;
+        if (prev && y < prev.getBoundingClientRect().top + prev.offsetHeight / 2) ul.insertBefore(el, prev);
+        else if (next && y > next.getBoundingClientRect().top + next.offsetHeight / 2) ul.insertBefore(next, el);
+      };
+      ul.addEventListener('pointermove', (e) => { if (drag && e.pointerId === drag.id) { drag.y = e.clientY; place(); } });
+      const end = (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        clearTimeout(drag.raf);
+        drag.el.classList.remove('dragging');
+        drag = null;
+        save();
+      };
+      ul.addEventListener('pointerup', end);
+      ul.addEventListener('pointercancel', end);
+      return { touch, bar: h('div', { class: 'sort-bar' }, status) };
+    }
+    // 電腦:點選項目 → ▲▼ 移動
+    let sel = null;
+    const up = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', title: '上移', disabled: true, onclick: () => mv(-1) }, '▲ 上移');
+    const dn = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', title: '下移', disabled: true, onclick: () => mv(1) }, '▼ 下移');
+    const sync = () => {
+      for (const el of ul.children) el.classList.toggle('selected', el === sel);
+      up.disabled = !sel || !sel.previousElementSibling;
+      dn.disabled = !sel || !sel.nextElementSibling;
+    };
+    const mv = (dir) => {
+      if (!sel) return;
+      if (dir < 0 && sel.previousElementSibling) ul.insertBefore(sel, sel.previousElementSibling);
+      else if (dir > 0 && sel.nextElementSibling) ul.insertBefore(sel.nextElementSibling, sel);
+      else return;
+      sel.scrollIntoView({ block: 'nearest' });
+      sync();
+      status.textContent = '';
+      save();
+    };
+    ul.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      const el = e.target.closest('.list-item');
+      if (!el) return;
+      sel = sel === el ? null : el;
+      sync();
+    });
+    return { touch, bar: h('div', { class: 'sort-bar' }, up, dn, status) };
   }
   // 公司人員:姓名/英文姓名/部門/E-Mail(存在 Excel「公司人員」工作表),可新增、編輯與刪除;只重畫面板內容,保持展開
   const staffList = () => (S.data ? Staff.read(S.data.book) : []);
