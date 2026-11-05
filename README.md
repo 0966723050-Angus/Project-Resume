@@ -174,3 +174,7 @@ Service Worker 快取名稱;App 偵測到新版會自動重新載入(有未儲�
 
 履歷頁右上 💬:經由 Apps Script(`?a=ding`)呼叫釘釘群組自訂機器人,以 Markdown 發送「日期 代號 名稱 專案履歷」標題連結(不顯示網址與預覽卡片)。
 設定:Apps Script 專案設定 → 指令碼屬性加 `DINGTALK_WEBHOOK`(機器人 Webhook);安全設定用「加簽」時另加 `DINGTALK_SECRET`,用「自訂關鍵詞」請設「專案履歷」。Webhook 不寫入程式碼(repo 為公開)。需重新部署新版本。
+
+### 每日專案現況信(Apps Script)
+- 每天 08:30 寄給管理者:Project Management.xlsx 中未結案的專案(排除「結案」=是、階段為完工、現況為 Finish/已完工/Pending),列出階段、需求日期、現況與狀態不是 Close 的追蹤確認事項(逾期標紅)
+- 啟用:gas/Code.gs 執行 installPmReport 一次;pmReport 可立即寄一封測試

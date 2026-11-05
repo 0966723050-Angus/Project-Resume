@@ -6,6 +6,7 @@
  *       更新程式後:部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署(網址不變)
  *       加速:在編輯器選函式 installWarmTrigger → 執行一次(建立每 10 分鐘預熱排程)
  *       備份:在編輯器選函式 installDailyBackup → 執行一次(建立每日 02:00 備份排程並立即備份)
+ *       專案現況:在編輯器選函式 installPmReport → 執行一次(每天 08:30 寄未結案專案的現況與 Open 追蹤事項;pmReport 立即寄一封)
  *       工時:在編輯器選函式 installHoursNotice → 執行一次(每月第一個上班日 09:00 由釘釘機器人傳未提報提醒;testHoursNotice 只寄預覽 E-Mail 給管理者)
  *       日曆:在編輯器選函式 syncCalendar → 執行一次(授權日曆),再部署新版本;之後近期工作項目每次存檔自動同步
  * 安全:只回傳「履歷編號 + 分享碼」都相符的那一份履歷;圖片/附件也只限該履歷中有列出的檔案。
@@ -575,6 +576,102 @@ function overdueHtml(r) {
   };
   return '<div style="font-family:sans-serif;color:#111">' + table('追蹤/殘件事項', r.remain, true) + table('專案管理 追蹤事項', r.pm, false) +
     '<p style="margin-top:18px"><a href="' + APP_URL + '">開啟 ATK專案履歷</a></p></div>';
+}
+
+// ---------- 每日專案管理現況(08:30 寄信給管理者) ----------
+// 啟用:在編輯器選函式 installPmReport → 執行一次。測試:執行 pmReport(立即寄一封)
+// 內容:Project Management.xlsx「project list」中未結案的專案(排除「結案」=是、階段為完工、現況為 Finish/已完工/Pending),
+//       每個專案列出階段、需求日期、現況,以及狀態不是 Close 的追蹤確認事項
+function installPmReport() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (['pmReportPlan', 'pmReport'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
+  });
+  // 每天 7 點多先排好當天 08:30 的單次排程(每日排程只能指定到「幾點」)
+  ScriptApp.newTrigger('pmReportPlan').timeBased().everyDays(1).atHour(7).inTimezone(TZ).create();
+  pmReportPlan();
+}
+function pmReportPlan() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'pmReport') ScriptApp.deleteTrigger(t); });
+  var at = new Date(Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'08:30:00") + '+08:00');
+  if (at.getTime() > Date.now()) ScriptApp.newTrigger('pmReport').timeBased().at(at).create();
+}
+function pmReport() {
+  var pmFile = findByNames(PM_FILE_NAMES, 'PM_FILE_ID');
+  if (!pmFile) throw new Error('找不到 Project Management.xlsx');
+  var list = pmReportFrom(readGrid(pmFile, PM_SHEET), todaySerial());
+  var md = Utilities.formatDate(new Date(), TZ, 'M/d');
+  var items = list.reduce(function (n, p) { return n + p.tracks.length; }, 0);
+  MailApp.sendEmail({
+    to: NOTIFY_TO || Session.getEffectiveUser().getEmail(),
+    subject: '【專案現況 ' + md + '】未結案專案 ' + list.length + ' 個、追蹤事項(Open)' + items + ' 項',
+    body: pmReportText(list) + '\n\n' + APP_URL + '#/pm',
+    htmlBody: pmReportHtml(list),
+    name: 'ATK專案履歷',
+  });
+}
+
+// ---- 以下為純資料處理(不呼叫 GAS API,可在瀏覽器測試) ----
+// 已完工/Pending:「階段」為完工,或「現況」寫 Finish / 已完工 / Pending(現況欄常用來標這兩種狀態)
+function isPmDone(stage, current) {
+  return /完工|pending/i.test(String(stage || '')) || /^\s*(finish(ed)?|已?完工|pending)/i.test(String(current || ''));
+}
+function pmReportFrom(pmGrid, today) {
+  var pt = tableOf(pmGrid), pc = pt.col, out = [];
+  pt.rows.forEach(function (row) {
+    var code = cellText(row, pc['專案代號']), name = cellText(row, pc['專案名稱']);
+    if ((!code && !name) || cellText(row, pc['結案']) === '是') return;
+    var stage = cellText(row, pc['階段']), current = cellText(row, pc['現況']);
+    if (isPmDone(stage, current)) return;
+    var need = cellSerial(row, pc['需求日期']);
+    var p = { code: code, name: name, batch: cellText(row, pc['批次']), stage: stage, need: need == null ? '' : serialYMD(need),
+      current: current, tracks: [] };
+    for (var n = 1; ; n++) {
+      var sfx = n === 1 ? '' : String(n);
+      var ci = { item: pc['追蹤確認事項' + sfx], progress: pc['進度與結果' + sfx], due: pc['期限' + sfx], status: pc['狀態' + sfx] };
+      if (!ci.item && !ci.progress && !ci.due && !ci.status) break;
+      var item = cellText(row, ci.item), progress = cellText(row, ci.progress), status = cellText(row, ci.status);
+      if ((!item && !progress) || isClosed(status)) continue;
+      var due = cellSerial(row, ci.due);
+      p.tracks.push({ item: item || '(未填事項)', progress: progress, due: due == null ? '' : serialYMD(due), late: due != null && due < today ? today - due : 0, status: status || 'Open' });
+    }
+    out.push(p);
+  });
+  return out;
+}
+function pmReportText(list) {
+  if (!list.length) return '目前沒有未結案的專案。';
+  return list.map(function (p) {
+    var head = '■ ' + p.code + ' ' + p.name + (p.batch ? '(批次' + p.batch + ')' : '') + ' — 階段:' + (p.stage || '—') + (p.need ? ' / 需求日期 ' + p.need : '');
+    var cur = '  現況:' + (p.current ? p.current.replace(/\s*\n\s*/g, ' / ') : '(未填)');
+    var tr = p.tracks.length ? p.tracks.map(function (t) {
+      return '  ・' + t.item.replace(/\s+/g, ' ') + (t.progress ? ' → ' + t.progress.replace(/\s+/g, ' ') : '') + (t.due ? '(期限 ' + t.due + (t.late ? ',逾期 ' + t.late + ' 天' : '') + ')' : '');
+    }).join('\n') : '  ・(無 Open 追蹤事項)';
+    return head + '\n' + cur + '\n' + tr;
+  }).join('\n\n');
+}
+function pmReportHtml(list) {
+  var th = 'style="background:#1e40af;color:#fff;padding:6px 8px;text-align:left;font-size:13px;white-space:nowrap"';
+  var td = 'style="border-bottom:1px solid #e5e7eb;padding:6px 8px;font-size:13px;vertical-align:top"';
+  var br = function (s) { return htmlEsc(s).replace(/\n/g, '<br>'); };
+  var h = '<div style="font-family:sans-serif;color:#111">';
+  if (!list.length) h += '<p>目前沒有未結案的專案。</p>';
+  list.forEach(function (p) {
+    h += '<div style="margin:0 0 18px;border:1px solid #d1d5db;border-radius:8px;overflow:hidden">' +
+      '<div style="background:#eff6ff;padding:8px 10px"><b style="font-size:15px">' + htmlEsc(p.code) + ' ' + htmlEsc(p.name) + '</b>' +
+      (p.batch ? '<span style="color:#6b7280">(批次' + htmlEsc(p.batch) + ')</span>' : '') +
+      '<div style="font-size:13px;color:#374151;margin-top:2px">階段:<b>' + htmlEsc(p.stage || '—') + '</b>' + (p.need ? ' ・ 需求日期 ' + p.need : '') + '</div></div>' +
+      '<div style="padding:8px 10px;font-size:13px"><b>現況</b><br>' + (p.current ? br(p.current) : '<span style="color:#9ca3af">(未填)</span>') + '</div>';
+    if (p.tracks.length) {
+      h += '<table style="border-collapse:collapse;width:100%"><tr><th ' + th + '>追蹤確認事項</th><th ' + th + '>進度與結果</th><th ' + th + '>期限</th></tr>';
+      p.tracks.forEach(function (t) {
+        h += '<tr><td ' + td + '>' + br(t.item) + '</td><td ' + td + '>' + br(t.progress) + '</td><td ' + td + ' nowrap>' + (t.due || '—') +
+          (t.late ? '<br><b style="color:#dc2626">逾期 ' + t.late + ' 天</b>' : '') + '</td></tr>';
+      });
+      h += '</table>';
+    } else h += '<div style="padding:0 10px 8px;font-size:13px;color:#9ca3af">(無 Open 追蹤事項)</div>';
+    h += '</div>';
+  });
+  return h + '<p><a href="' + APP_URL + '#/pm">開啟 ATK專案履歷 → 專案管理</a></p></div>';
 }
 
 // ---------- 傳送到釘釘群組(自訂機器人) ----------
