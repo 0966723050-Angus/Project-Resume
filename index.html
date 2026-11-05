@@ -40,6 +40,7 @@
     <button id="linkBtn" class="icon-btn" type="button" aria-label="複製連結" title="複製此專案履歷的連結" hidden>🔗</button>
     <button id="saveBtn" class="btn btn-save" type="button" hidden>儲存</button>
     <button id="dingBtn" class="btn btn-publish" type="button" title="由釘釘機器人把連結發佈到群組" hidden>發佈</button>
+    <button id="pmSumBtn" class="btn btn-publish" type="button" title="未結案專案的現況、追蹤事項與殘件彙整" hidden>彙整</button>
   </header>
 
   <div id="drawerBackdrop" class="backdrop" hidden></div>
@@ -148,6 +149,10 @@
     </section>
 
     <!-- 專案管理(只有管理者) -->
+    <section id="pmSumView" class="view" hidden>
+      <div id="pmSum"></div>
+    </section>
+
     <section id="pmListView" class="view" hidden>
       <div class="filter-bar">
         <input id="pmSearch" type="search" placeholder="輸入專案代號或專案名稱(可只打部分文字)" aria-label="查詢專案" autocomplete="off">

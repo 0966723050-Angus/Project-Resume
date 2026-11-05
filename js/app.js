@@ -141,7 +141,7 @@
   }
 
   // ---------- 頁首 / 版面 ----------
-  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmEditView', 'schedView', 'workView', 'ganttView', 'hoursView', 'hoursStatsView', 'settingsView'];
+  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmSumView', 'pmEditView', 'schedView', 'workView', 'ganttView', 'hoursView', 'hoursStatsView', 'settingsView'];
   function showView(id, { title = 'ATK專案履歷', sub = '', back = null, save = false, link = false } = {}) {
     for (const v of VIEWS) $(v).hidden = v !== id;
     setTitle(title, sub);
@@ -151,6 +151,7 @@
     $('saveBtn').hidden = !save;
     $('linkBtn').hidden = !link;
     $('dingBtn').hidden = !link || !CFG.SHARE_URL || !S.ready; // 發佈:只限登入的同仁(免登入檢視者不顯示)
+    $('pmSumBtn').hidden = id !== 'pmListView';
     hideNav();
     for (const a of document.querySelectorAll('[data-nav]')) {
       a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm') || (id === 'workView' && a.dataset.nav === 'work') || (id === 'ganttView' && a.dataset.nav === 'gantt') || (id.startsWith('hours') && a.dataset.nav === 'hours'));
@@ -228,6 +229,7 @@
     else if (parts[0] === 'remain' && parts[1]) openRemain(parts[1], q.get('p'));
     else if (parts[0] === 'remain') showRemainList(q.get('p'));
     else if (parts[0] === 'settings' && can('settings')) showSettings();
+    else if (parts[0] === 'pm' && can('pmView') && parts[1] === 'sum') showPmSum();
     else if (parts[0] === 'pm' && can('pmView')) (parts[1] && !(parts[1] === 'new' && !can('pmEdit')) ? openPm(parts[1]) : showPmList());
     else if (parts[0] === 'sched' && parts[1] && can('pmView')) openSched(parts[1]);
     else if (parts[0] === 'hours' && parts[1] === 'stats' && can('hoursAll')) showHourStats(q.get('m'));
@@ -1690,6 +1692,51 @@
   $('pmOpenOnly').onchange = renderPmList;
   $('pmClear').onclick = () => { $('pmSearch').value = ''; $('pmPick').value = ''; $('pmOpenOnly').checked = false; renderPmList(); };
   $('pmAdd').onclick = () => go('#/pm/new');
+
+  // ---------- 專案彙整(與每日 08:30 寄出的專案現況信內容相同) ----------
+  // 未結案專案(排除「結案」=是、階段為完工、現況為 Finish/已完工/Pending)的現況、Open 追蹤事項,
+  // 以及殘件/追蹤事項頁中狀態不是 Close 的殘件(依專案代號放在該專案下;對不到的列在最後)
+  $('pmSumBtn').onclick = () => go('#/pm/sum');
+  const pmDone = (r) => /完工|pending/i.test(r.stage || '') || /^\s*(finish(ed)?|已?完工|pending)/i.test(r.current || '');
+  const lateDays = (d) => { if (!/^\d{4}-\d\d-\d\d/.test(d || '')) return 0; const n = Math.round((Date.parse(todayISO()) - Date.parse(d.slice(0, 10))) / 86400000); return n > 0 ? n : 0; };
+  async function showPmSum() {
+    try { await pmLoad(); if (!S.data) await reload(); } catch (err) { toast(errMsg(err), 6000); replaceHash('#/pm'); showPmList(); return; }
+    const key = (c) => String(c || '').trim().toUpperCase();
+    const projs = S.pm.data.records.filter((r) => (r.code || r.name) && r.closed !== '是' && !pmDone(r))
+      .sort((a, b) => Store.compareCode(a.code, b.code) || (Number(a.batch) || 0) - (Number(b.batch) || 0) || a._row - b._row);
+    const rems = ((S.data && S.data.remains) || []).filter((x) => !isClosed(x) && (x.problem || x.code))
+      .sort((a, b) => Store.compareCode(a.code, b.code) || String(a.due || '9').localeCompare(String(b.due || '9')));
+    const byCode = new Map(projs.filter((p) => p.code).map((p) => [key(p.code), []]));
+    const others = [];
+    for (const x of rems) { const g = byCode.get(key(x.code)); if (g) g.push(x); else others.push(x); }
+    const nTracks = projs.reduce((n, p) => n + p.tracks.filter((t) => (t.item || t.progress) && !isClosed(t)).length, 0);
+    showView('pmSumView', { title: '專案彙整', sub: `未結案專案 ${projs.length} 個 · 追蹤事項(Open)${nTracks} 項 · 殘件 ${rems.length} 項`, back: '#/pm' });
+    const due = (d) => h('div', { class: 'sum-due' }, d ? '期限 ' + fmtDate(d) : '期限 —', lateDays(d) ? h('b', { class: 'sum-late' }, ` 逾期 ${lateDays(d)} 天`) : null);
+    const remainItem = (x, withCode) => h('div', { class: 'sum-item' },
+      withCode ? h('div', { class: 'sum-code' }, `${x.code || '(未填代號)'} ${x.name || ''}`) : null,
+      h('div', { class: 'sum-main' }, x.problem || '(未填問題描述)'),
+      x.progress ? h('div', { class: 'sum-prog' }, '→ ' + x.progress) : null,
+      h('div', { class: 'sum-meta' }, [x.owner, x.dept].filter(Boolean).join(' · ') || ' ', ' ', h('span', { class: 'sum-st' }, x.status || 'Open')),
+      due(x.due));
+    const box = $('pmSum');
+    box.innerHTML = '';
+    if (!projs.length) box.append(h('p', { class: 'empty' }, '目前沒有未結案的專案。'));
+    for (const p of projs) {
+      const tracks = p.tracks.filter((t) => (t.item || t.progress) && !isClosed(t));
+      const rm = (p.code && byCode.get(key(p.code))) || [];
+      box.append(h('div', { class: 'sum-card' },
+        h('a', { class: 'sum-head', href: '#/pm/' + p._row },
+          h('div', { class: 'sum-title' }, h('span', { class: 'code' }, p.code || ''), ' ', p.name || '', p.batch ? h('span', { class: 'sum-batch' }, `(批次${p.batch})`) : null),
+          h('div', { class: 'sum-sub' }, p.stage ? stageChip(p.stage) : null, p.needDate ? h('span', { class: 'need-date' + (isNeedLate(p) ? ' late' : '') }, '需求日期 ' + fmtDate(p.needDate)) : null)),
+        h('div', { class: 'sum-sec' }, h('div', { class: 'sum-label' }, '現況'), h('div', { class: 'sum-cur' + (p.current ? '' : ' muted') }, p.current || '(未填)')),
+        h('div', { class: 'sum-sec' }, h('div', { class: 'sum-label' }, `追蹤事項(Open ${tracks.length} 項)`),
+          tracks.length ? tracks.map((t) => h('div', { class: 'sum-item' }, h('div', { class: 'sum-main' }, t.item || '(未填事項)'),
+            t.progress ? h('div', { class: 'sum-prog' }, '→ ' + t.progress) : null, due(t.due))) : h('div', { class: 'muted' }, '(無 Open 追蹤事項)')),
+        rm.length ? h('div', { class: 'sum-sec' }, h('div', { class: 'sum-label' }, `殘件事項(未結案 ${rm.length} 項)`), rm.map((x) => remainItem(x, false))) : null));
+    }
+    if (others.length) box.append(h('div', { class: 'sum-card' }, h('div', { class: 'sum-head' }, h('div', { class: 'sum-title' }, `其他殘件事項(專案不在上列清單,${others.length} 項)`)),
+      h('div', { class: 'sum-sec' }, others.map((x) => remainItem(x, true)))));
+  }
 
   const blankTrack = () => ({ item: '', progress: '', due: '', status: 'Open' });
   async function openPm(id) {
