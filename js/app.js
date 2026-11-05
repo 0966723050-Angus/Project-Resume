@@ -226,11 +226,11 @@
     const { parts, q } = parseHash();
     if (parts[0] === 'v' && parts[1]) viewResume(parts[1]);
     else if (parts[0] === 'r') openResume(parts[1] || 'new');
-    else if (parts[0] === 'remain' && parts[1]) openRemain(parts[1], q.get('p'));
+    else if (parts[0] === 'remain' && parts[1]) openRemain(parts[1], q.get('p'), q.get('from'));
     else if (parts[0] === 'remain') showRemainList(q.get('p'));
     else if (parts[0] === 'settings' && can('settings')) showSettings();
     else if (parts[0] === 'pm' && can('pmView') && parts[1] === 'sum') showPmSum();
-    else if (parts[0] === 'pm' && can('pmView')) (parts[1] && !(parts[1] === 'new' && !can('pmEdit')) ? openPm(parts[1]) : showPmList());
+    else if (parts[0] === 'pm' && can('pmView')) (parts[1] && !(parts[1] === 'new' && !can('pmEdit')) ? openPm(parts[1], q) : showPmList());
     else if (parts[0] === 'sched' && parts[1] && can('pmView')) openSched(parts[1]);
     else if (parts[0] === 'hours' && parts[1] === 'stats' && can('hoursAll')) showHourStats(q.get('m'));
     else if (parts[0] === 'hours') showHours();
@@ -1458,7 +1458,9 @@
     render();
     return h('div', { class: 'line-block' }, box, tools);
   }
-  function openRemain(id, p) {
+  // from='sum':由專案彙整頁進入,返回鍵回到彙整頁
+  const SUM_HASH = '#/pm/sum';
+  function openRemain(id, p, from) {
     let obj, isNew = false;
     if (id === 'new' && !canEditRemain()) { toast('沒有殘件/追蹤事項的編輯權限'); replaceHash('#/remain' + (p ? '?p=' + encodeURIComponent(p) : '')); showRemainList(p); return; }
     if (id === 'new') {
@@ -1468,19 +1470,19 @@
     } else {
       const r = S.data.remains.find((x) => x.id === id);
       if (!r) { toast('找不到此殘件項目(可能已被刪除,或請重新載入)', 4000); replaceHash('#/remain'); showRemainList(); return; }
-      if (!canEditRemain()) { viewRemain(r); return; }
+      if (!canEditRemain()) { viewRemain(r, from); return; }
       obj = clone(r);
     }
     editing = { type: 'remain', obj, snapshot: JSON.stringify(obj), isNew, uploads: [] };
-    const back = '#/remain' + (obj.code ? '?p=' + encodeURIComponent(obj.code) : '');
+    const back = from === 'sum' ? SUM_HASH : '#/remain' + (obj.code ? '?p=' + encodeURIComponent(obj.code) : '');
     showView('remainEditView', { title: isNew ? '新增殘件' : '殘件項目', sub: [obj.code, obj.name, authorLine(obj)].filter(Boolean).join(' · '), back, save: true });
     renderRemainForm();
     markDirty();
   }
   // 沒有修改權限的殘件 → 唯讀
-  function viewRemain(r) {
+  function viewRemain(r, from) {
     editing = null;
-    showView('readView', { title: '殘件項目', sub: [r.code, r.name, authorLine(r)].filter(Boolean).join(' · '), back: '#/remain' + (r.code ? '?p=' + encodeURIComponent(r.code) : '') });
+    showView('readView', { title: '殘件項目', sub: [r.code, r.name, authorLine(r)].filter(Boolean).join(' · '), back: from === 'sum' ? SUM_HASH : '#/remain' + (r.code ? '?p=' + encodeURIComponent(r.code) : '') });
     $('readNote').textContent = '🔒 唯讀檢視(只有填表人或管理者可以修改)';
     const srcId = (/^(\S+)/.exec(r.src || '') || [])[1];
     const srcResume = srcId && S.data.resumes.find((x) => x.id === srcId);
@@ -1548,7 +1550,7 @@
     editing.snapshot = JSON.stringify(editing.obj);
     replaceHash('#/remain/' + encodeURIComponent(rec.id));
     setTitle('殘件項目', [rec.code, rec.name, authorLine(rec)].filter(Boolean).join(' · '));
-    $('backBtn').dataset.to = '#/remain?p=' + encodeURIComponent(rec.code);
+    if ($('backBtn').dataset.to !== SUM_HASH) $('backBtn').dataset.to = '#/remain?p=' + encodeURIComponent(rec.code);
     renderRemainForm(); // 欄位改綁到存檔後的新物件
     markDirty();
     toast('✅ 已儲存到雲端硬碟');
@@ -1712,7 +1714,7 @@
     const nTracks = projs.reduce((n, p) => n + p.tracks.filter((t) => (t.item || t.progress) && !isClosed(t)).length, 0);
     showView('pmSumView', { title: '專案彙整', sub: `未結案專案 ${projs.length} 個 · 追蹤事項(Open)${nTracks} 項 · 殘件 ${rems.length} 項`, back: '#/pm' });
     const due = (d) => h('div', { class: 'sum-due' }, d ? '期限 ' + fmtDate(d) : '期限 —', lateDays(d) ? h('b', { class: 'sum-late' }, ` 逾期 ${lateDays(d)} 天`) : null);
-    const remainItem = (x, withCode) => h('div', { class: 'sum-item' },
+    const remainItem = (x, withCode) => h('a', { class: 'sum-item sum-link', href: '#/remain/' + encodeURIComponent(x.id) + '?from=sum' },
       withCode ? h('div', { class: 'sum-code' }, `${x.code || '(未填代號)'} ${x.name || ''}`) : null,
       h('div', { class: 'sum-main' }, x.problem || '(未填問題描述)'),
       x.progress ? h('div', { class: 'sum-prog' }, '→ ' + x.progress) : null,
@@ -1722,24 +1724,28 @@
     box.innerHTML = '';
     if (!projs.length) box.append(h('p', { class: 'empty' }, '目前沒有未結案的專案。'));
     for (const p of projs) {
-      const tracks = p.tracks.filter((t) => (t.item || t.progress) && !isClosed(t));
+      const tracks = p.tracks.map((t, i) => ({ ...t, _i: i })).filter((t) => (t.item || t.progress) && !isClosed(t));
       const rm = (p.code && byCode.get(key(p.code))) || [];
       box.append(h('div', { class: 'sum-card' },
-        h('a', { class: 'sum-head', href: '#/pm/' + p._row },
+        h('a', { class: 'sum-head', href: '#/pm/' + p._row + '?from=sum' },
           h('div', { class: 'sum-title' }, h('span', { class: 'code' }, p.code || ''), ' ', p.name || '', p.batch ? h('span', { class: 'sum-batch' }, `(批次${p.batch})`) : null),
           h('div', { class: 'sum-sub' }, p.stage ? stageChip(p.stage) : null, p.needDate ? h('span', { class: 'need-date' + (isNeedLate(p) ? ' late' : '') }, '需求日期 ' + fmtDate(p.needDate)) : null)),
         h('div', { class: 'sum-sec' }, h('div', { class: 'sum-label' }, '現況'), h('div', { class: 'sum-cur' + (p.current ? '' : ' muted') }, p.current || '(未填)')),
         h('div', { class: 'sum-sec' }, h('div', { class: 'sum-label' }, `追蹤事項(Open ${tracks.length} 項)`),
-          tracks.length ? tracks.map((t) => h('div', { class: 'sum-item' }, h('div', { class: 'sum-main' }, t.item || '(未填事項)'),
+          tracks.length ? tracks.map((t) => h('a', { class: 'sum-item sum-link', href: '#/pm/' + p._row + '?from=sum&t=' + t._i }, h('div', { class: 'sum-main' }, t.item || '(未填事項)'),
             t.progress ? h('div', { class: 'sum-prog' }, '→ ' + t.progress) : null, due(t.due))) : h('div', { class: 'muted' }, '(無 Open 追蹤事項)')),
         rm.length ? h('div', { class: 'sum-sec' }, h('div', { class: 'sum-label' }, `殘件事項(未結案 ${rm.length} 項)`), rm.map((x) => remainItem(x, false))) : null));
     }
     if (others.length) box.append(h('div', { class: 'sum-card' }, h('div', { class: 'sum-head' }, h('div', { class: 'sum-title' }, `其他殘件事項(專案不在上列清單,${others.length} 項)`)),
       h('div', { class: 'sum-sec' }, others.map((x) => remainItem(x, true)))));
+    box.onclick = (e) => { if (e.target.closest('a')) S.sumY = window.scrollY; };
+    if (S.sumY) { const y = S.sumY; S.sumY = 0; setTimeout(() => window.scrollTo(0, y), 0); }
   }
 
   const blankTrack = () => ({ item: '', progress: '', due: '', status: 'Open' });
-  async function openPm(id) {
+  // q:from=sum 由彙整頁進入(返回鍵回彙整頁);t=追蹤事項序號(展開並捲到該事項)
+  async function openPm(id, q) {
+    const from = q && q.get('from'), ti = q && q.get('t');
     try { await pmLoad(); } catch (err) { toast(errMsg(err), 6000); replaceHash('#/'); showList(); return; }
     let obj, isNew = false;
     if (id === 'new') {
@@ -1755,13 +1761,18 @@
     }
     editing = { type: 'pm', obj, snapshot: JSON.stringify(obj), isNew, uploads: [] };
     $('pmDelete').hidden = isNew || !can('pmEdit');
-    showView('pmEditView', { title: pmTitle(obj, isNew), sub: obj.name || '', back: '#/pm', save: can('pmEdit') });
+    showView('pmEditView', { title: pmTitle(obj, isNew), sub: obj.name || '', back: from === 'sum' ? SUM_HASH : '#/pm', save: can('pmEdit') });
     S.pmTrackFilter = 'Open';
     S.pmFoldKeep = false;
     $('pmTrackSec').open = false; // 追蹤事項每次進入先收合
-    if (!isNew) renderPmNav(obj._row);
+    if (!isNew && from !== 'sum') renderPmNav(obj._row);
     renderPmForm();
     markDirty();
+    if (ti != null && ti !== '') {
+      $('pmTrackSec').open = true;
+      const el = document.querySelector(`#pmTracks [data-ti="${Number(ti)}"]`);
+      if (el) setTimeout(() => { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1800); }, 60);
+    }
   }
   // 進度項目:日期 + 狀態(未進行/進行中/延遲/已完成)
   function fDateStatus(label, obj, dateKey, stKey) {
@@ -1896,7 +1907,7 @@
           markDirty();
         },
       }, '刪除');
-      box.append(h('div', { class: 'panel problem' + (isClosed(t) ? ' track-closed' : '') },
+      box.append(h('div', { class: 'panel problem' + (isClosed(t) ? ' track-closed' : ''), 'data-ti': i },
         h('div', { class: 'panel-title row' }, h('span', {}, `追蹤事項 ${i + 1}`), h('span', { class: 'grow' }), del),
         h('div', { class: 'fields' },
           fText('追蹤確認事項', t, 'item', { multi: true }),

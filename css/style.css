@@ -672,3 +672,10 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
 .sum-st { display: inline-block; padding: 0 6px; border-radius: 6px; background: var(--warn-soft); color: var(--warn); }
 .sum-late { color: var(--danger); }
 #pmSumView .muted { color: #9ca3af; font-size: 13px; }
+
+.sum-link { display: block; color: inherit; text-decoration: none; margin: 0 -12px; padding: 6px 30px 6px 12px; position: relative; cursor: pointer; }
+.sum-link::after { content: '›'; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 20px; }
+.sum-link:hover, .sum-link:active { background: var(--surface-2); }
+.sum-head { position: relative; padding-right: 30px; }
+a.sum-head::after { content: '›'; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 20px; }
+.panel.flash { outline: 3px solid var(--warn); outline-offset: 2px; transition: outline-color .4s; }
