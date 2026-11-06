@@ -459,12 +459,17 @@
       sel.blur();
       if (picker) return;
       const items = [...sel.options].filter((o) => o.value).map((o) => {
-        const t = o.textContent.trim(), i = t.indexOf(' ');
+        const t = o.textContent.trim(), i = o.dataset.reopen != null ? -1 : t.indexOf(' '); // 切換項目整行顯示
         return { value: o.value, label: i > 0 ? t.slice(0, i) : t, sub: i > 0 ? t.slice(i + 1) : '' };
       });
       const v = await openPicker({ title, items, selected: [sel.value] });
-      if (v != null && v !== sel.value) { sel.value = v; sel.dispatchEvent(new Event('change')); }
+      if (v == null || v === sel.value) return;
+      const reopen = [...sel.options].some((o) => o.value === v && o.dataset.reopen != null);
+      sel.value = v;
+      sel.dispatchEvent(new Event('change'));
+      if (reopen) open(e); // 切換清單範圍的項目(例如「顯示全部專案」):直接在同一個清單重新展開
     };
+    sel.dataset.sheet = '1';
     let t0 = null; // 捲動畫面時手指劃過不算點擊
     sel.addEventListener('touchstart', (e) => { const t = e.touches[0]; t0 = [t.clientX, t.clientY]; }, { passive: true });
     sel.addEventListener('touchend', (e) => {
@@ -1325,7 +1330,7 @@
     }
     if (code && !projects.some(([c]) => c === code)) sel.append(h('option', { value: code }, `${code}(0)`));
     if (!S.rpAll && !shown) sel.append(h('option', { value: '', disabled: true }, '(目前沒有未結案的專案)'));
-    sel.append(h('option', { value: S.rpAll ? RP_OPEN : RP_ALL }, S.rpAll ? '↩ 只顯示未結案專案' : '📂 顯示全部專案(含已結案)…'));
+    sel.append(h('option', { value: S.rpAll ? RP_OPEN : RP_ALL, 'data-reopen': '' }, S.rpAll ? '↩ 只顯示未結案專案' : '📂 顯示全部專案(含已結案)…'));
     sel.value = code;
   }
   function showRemainList(p) {
@@ -1381,7 +1386,8 @@
     if (v === RP_ALL || v === RP_OPEN) { // 切換清單範圍:保留原本的選擇,重新展開讓使用者挑
       S.rpAll = v === RP_ALL;
       fillRemainProjects(ssGet(LS_RP) || '');
-      try { $('rProject').showPicker(); } catch { /* 不支援時使用者再點一次即可 */ }
+      // 手機底部清單由 sheetSelect 自己重新展開;電腦版原生下拉用 showPicker 展開
+      if (!$('rProject').dataset.sheet) try { $('rProject').showPicker(); } catch { /* 不支援時使用者再點一次即可 */ }
       return;
     }
     remainProjectChanged();
