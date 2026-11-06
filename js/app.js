@@ -1284,7 +1284,7 @@
           return {
             id: Store.newId('RI'), saved: true, date: String(res.start || '').slice(0, 10) || todayISO(), code: res.code, name: res.name,
             problem: p.problem, cause: p.cause, temp: p.temp, perm: p.perm, ecn: '', dept: '', owner: '', due: '', progress: '',
-            status: 'Open', note: '', files: '', src: `${res.id} #${i + 1}`, author: myName(), authorEmail: myEmail(),
+            status: 'Open', note: '', files: '', src: `${res.id} #${i + 1}`, author: myName(), authorEmail: myEmail(), editor: myName(), edited: stampNow(),
           };
         });
         d.remains.push(...items);
@@ -1307,19 +1307,33 @@
     for (const p of projList()) if (p.code && map.has(p.code) && !map.get(p.code)) map.set(p.code, p.name);
     return [...map.entries()].sort((a, b) => newestFirst(a[0], b[0]));
   }
+  // 專案選單:預設只列未結案的專案(還有 Open 事項);選單最後可切換顯示全部(含已結案)
+  const RP_ALL = '__all__', RP_OPEN = '__open__';
+  const stampNow = () => { const t = new Date(); return `${todayISO()} ${pad(t.getHours())}:${pad(t.getMinutes())}`; };
+  function fillRemainProjects(code) {
+    const projects = remainProjects();
+    const sel = $('rProject');
+    sel.innerHTML = '';
+    sel.append(h('option', { value: '' }, S.rpAll ? '請選擇專案(全部)…' : '請選擇專案(未結案)…'));
+    let shown = 0;
+    for (const [c, n] of projects) {
+      const rs = S.data.remains.filter((r) => r.code === c);
+      const open = rs.filter((r) => (r.status || 'Open') !== 'Close').length;
+      if (!S.rpAll && !open && c !== code) continue;
+      shown++;
+      sel.append(h('option', { value: c }, `${c} ${n}(${open ? 'Open ' + open + ' / ' : '已結案 · '}${rs.length})`));
+    }
+    if (code && !projects.some(([c]) => c === code)) sel.append(h('option', { value: code }, `${code}(0)`));
+    if (!S.rpAll && !shown) sel.append(h('option', { value: '', disabled: true }, '(目前沒有未結案的專案)'));
+    sel.append(h('option', { value: S.rpAll ? RP_OPEN : RP_ALL }, S.rpAll ? '↩ 只顯示未結案專案' : '📂 顯示全部專案(含已結案)…'));
+    sel.value = code;
+  }
   function showRemainList(p) {
     const projects = remainProjects();
     let code = p != null ? p : (ssGet(LS_RP) ?? '');
     if (code && !projects.some(([c]) => c === code) && p == null) code = '';
-    const sel = $('rProject');
-    sel.innerHTML = '';
-    sel.append(h('option', { value: '' }, '請選擇專案…'));
-    for (const [c, n] of projects) {
-      const cnt = S.data.remains.filter((r) => r.code === c).length;
-      sel.append(h('option', { value: c }, `${c} ${n}(${cnt})`));
-    }
-    if (code && !projects.some(([c]) => c === code)) sel.append(h('option', { value: code }, `${code}(0)`));
-    sel.value = code;
+    S.rpAll = false; // 每次進入頁面預設只列未結案專案
+    fillRemainProjects(code);
     ssSet(LS_RP, code);
     showView('remainView', { title: '追蹤/殘件事項', sub: fileLine() });
     renderRemainList();
@@ -1355,13 +1369,25 @@
           r.owner ? h('span', {}, '👤 ' + r.owner) : null,
           r.dept ? h('span', {}, r.dept) : null,
           r.due ? h('span', { class: isOverdue(r) ? 'overdue' : '' }, '期限 ' + fmtDate(r.due) + (isOverdue(r) ? '(逾期)' : '')) : null,
-          r.author ? h('span', { class: 'author' }, (canEditRemain() ? '' : '🔒 ') + '填表 ' + r.author) : null)));
+          r.author ? h('span', { class: 'author' }, (canEditRemain() ? '' : '🔒 ') + '填表 ' + r.author) : null),
+        r.editor || r.edited ? h('div', { class: 'card-upd' }, '🕒 最後更新 ' + [r.editor, String(r.edited || '').replace(/-/g, '/')].filter(Boolean).join(' · ')) : null));
     }
     $('remainEmpty').hidden = items.length > 0;
     const open = items.filter((r) => (r.status || 'Open') !== 'Close').length;
     $('remainCount').textContent = `共 ${items.length} 筆,Open ${open} 筆`;
   }
-  $('rProject').onchange = () => { ssSet(LS_RP, $('rProject').value); replaceHash('#/remain' + ($('rProject').value ? '?p=' + encodeURIComponent($('rProject').value) : '')); renderRemainList(); };
+  $('rProject').onchange = () => {
+    const v = $('rProject').value;
+    if (v === RP_ALL || v === RP_OPEN) { // 切換清單範圍:保留原本的選擇,重新展開讓使用者挑
+      S.rpAll = v === RP_ALL;
+      fillRemainProjects(ssGet(LS_RP) || '');
+      try { $('rProject').showPicker(); } catch { /* 不支援時使用者再點一次即可 */ }
+      return;
+    }
+    remainProjectChanged();
+  };
+  $('rClear').onclick = () => { $('rProject').value = ''; remainProjectChanged(); };
+  function remainProjectChanged() { ssSet(LS_RP, $('rProject').value); replaceHash('#/remain' + ($('rProject').value ? '?p=' + encodeURIComponent($('rProject').value) : '')); renderRemainList(); }
   $('rStatus').onchange = renderRemainList;
   $('addRemain').onclick = () => go('#/remain/new' + ($('rProject').value ? '?p=' + encodeURIComponent($('rProject').value) : ''));
   $('exportRemain').onclick = async () => {
@@ -1548,6 +1574,8 @@
     if (!String(obj.problem || '').trim()) { toast('請填寫問題描述'); return false; }
     for (const k of ['dept', 'owner']) obj[k] = splitMulti(obj[k]).join('／'); // 複選統一以「／」分隔
     const rec = clone(obj);
+    rec.editor = myName();
+    rec.edited = stampNow();
     try {
       await commit('儲存殘件項目…', (d) => {
         d.changed.add('remain');

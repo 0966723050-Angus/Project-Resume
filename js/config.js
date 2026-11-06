@@ -75,6 +75,9 @@ window.APP_CONFIG = {
     { key: 'matStatus', title: '物料狀態', kind: 'c' },
     { key: 'lines', title: '線別', kind: 'w' },
     { key: 'done', title: '完工', kind: 'w' },
+    // 2026-11-06 新增:每次儲存記錄最後更新者與時間(YYYY-MM-DD HH:MM)
+    { key: 'editor', title: '最後更新者', kind: 'c' },
+    { key: 'edited', title: '最後更新時間', kind: 'c' },
   ],
   MAT_STATUS_OPTIONS: ['未到料', '已到料', '無物料'],
   DONE_OPTIONS: ['是', '否'],
