@@ -47,6 +47,7 @@
   }
 
   // ---------- 載入 ----------
+  let autoDone = []; // 這次讀檔時自動完工的項目
   function apply(b, m) {
     bytes = b;
     if (m) meta = m;
@@ -56,6 +57,18 @@
     permissions = p.permissions;
     // 仍留在 List 的「完工」項目改歸入資料庫(下次儲存時才寫回雲端)
     D.rows = D.rows.filter((r) => { if (r.status !== '完工') return true; D.archive.push({ ...r, closed: '' }); return false; });
+    // 「已排定」且結束日期已過(今天 > 結束日期)→ 自動完工並歸入資料庫,結案日期記為結束日期;有編輯權限的人開啟時寫回雲端
+    const today = WorkGantt.toISO(WorkGantt.todayUTC());
+    autoDone = [];
+    D.rows = D.rows.filter((r) => {
+      const st = (r.status || '').trim();
+      if (!((st === '已排定' || st === '已確定') && /^\d{4}-\d\d-\d\d$/.test(r.end || '') && r.end < today)) return true;
+      recalcDuration(r);
+      const a = { item: r.item, start: r.start, end: r.end, duration: r.duration, status: '完工', hw: r.hw, sw: r.sw, note: r.note, plan: r.plan, closed: r.end };
+      D.archive.push(a);
+      autoDone.push(a);
+      return false;
+    });
     sortByStart(D.rows);
     // 還沒有「人員」工作表時,先用現有資料出現過的人名當作初始名單
     D.roster = p.roster || { hw: namesFromData('hw'), sw: namesFromData('sw') };
@@ -68,6 +81,7 @@
       try {
         const r = await Drive.download(W.FILE_ID);
         apply(r.bytes, r.meta);
+        if (autoDone.length && C.can('work') && !editMode) await saveAutoDone(r.bytes);
       } catch (err) {
         if (err.status === 403 || err.status === 404) throw new Error(`此帳號沒有「${W.FILE_NAME}」的存取權限,請洽檔案擁有者`);
         throw err;
@@ -362,6 +376,23 @@
       C.toast(err.status === 403 ? '儲存失敗:您的帳號只有檢視權限,請聯絡檔案擁有者升級為編輯者' : '儲存失敗:' + C.errMsg(err), 6000);
       return false;
     } finally { C.busy(''); }
+  }
+
+  // 自動完工的項目立即寫回雲端(以剛下載的檔案為底,只移動這些項目,其他內容不變)
+  async function saveAutoDone(base) {
+    const n = autoDone.length, names = autoDone.map((a) => a.item || '(未命名項目)');
+    const rows = D.rows.map((r) => ({ ...r }));
+    sortByStart(rows);
+    rows.forEach((r, i) => { r.row = W.MIN_ROW + i; });
+    try {
+      const out = WorkIO.buildPatched(base, rows, D.archive, D.roster);
+      meta = await Drive.upload(W.FILE_ID, out, WorkIO.MIME);
+      apply(out);
+      C.toast(`✅ ${n} 筆已排定項目超過結束日期,已自動改為完工並移至資料庫:${names.slice(0, 3).join('、')}${n > 3 ? ' 等' : ''}`, 6000);
+      syncCalendar();
+    } catch (err) {
+      C.toast('自動完工寫回失敗(畫面上已先移除):' + C.errMsg(err), 6000);
+    }
   }
 
   // 背景同步,不擋存檔流程;有變動才提示
