@@ -2782,7 +2782,7 @@
   }
   const getErpDir = () => kv('readonly', (st) => st.get('erpDir')).catch(() => null);
   // 「ERP工時匯出路徑」方塊(統計頁與設定頁):預設好資料夾後,按「ERP工時」即一鍵寫入,不再詢問
-  // ---- 手機匯出的 ERP-WT.xlsx:放在專案履歷檔同層的「ERP工時」資料夾;電腦端偵測到較新的檔案就寫入本機資料夾 ----
+  // ---- 手機匯出的 ERP-WT.xlsx:放在專案履歷檔同層的「ERP工時」資料夾;電腦上的 erp-sync.ps1(排程每 2 分鐘)經 Apps Script 取回並寫入 ERP 資料夾 ----
   const ERP_CLOUD_DIR = 'ERP工時';
   const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   async function erpCloudFolder() {
@@ -2796,42 +2796,8 @@
     if (f) await Drive.upload(f.id, bytes, XLSX_MIME);
     else await Drive.createFile(ERP_FILE, new Blob([bytes], { type: XLSX_MIME }), XLSX_MIME, [folder]);
   }
-  // 雲端上尚未寫入本機的檔案(比上次寫入的版本新);回傳 { file } 或 null
-  async function erpCloudPending() {
-    try {
-      const folder = await erpCloudFolder();
-      const f = await Drive.findIn(ERP_FILE, folder);
-      if (!f) return null;
-      const done = await kv('readonly', (st) => st.get('erpSynced')).catch(() => null);
-      return !done || f.modifiedTime > done ? f : null;
-    } catch { return null; }
-  }
-  let erpSyncing = false;
-  async function erpCloudWrite(dir, f, ask) {
-    if (erpSyncing) return false;
-    erpSyncing = true;
-    try {
-      let perm = await dir.queryPermission({ mode: 'readwrite' });
-      if (perm !== 'granted' && ask) perm = await dir.requestPermission({ mode: 'readwrite' });
-      if (perm !== 'granted') return false;
-      const { bytes } = await Drive.download(f.id);
-      const w = await (await dir.getFileHandle(ERP_FILE, { create: true })).createWritable();
-      await w.write(bytes);
-      await w.close();
-      await kv('readwrite', (st) => st.put(f.modifiedTime, 'erpSynced'));
-      const by = f.lastModifyingUser ? f.lastModifyingUser.displayName + ' ' : '';
-      toast(`✅ 已把手機匯出的 ${ERP_FILE}(${by}${new Date(f.modifiedTime).toLocaleString('zh-TW')})寫入「${dir.name}」資料夾`, 6000);
-      return true;
-    } catch (e) {
-      toast('寫入手機匯出的 ERP工時失敗:' + (e.name === 'NoModificationAllowedError' || e.name === 'InvalidStateError' ? '檔案可能正在 Excel 中開啟,請先關閉' : errMsg(e)), 6000);
-      return false;
-    } finally { erpSyncing = false; }
-  }
   async function renderErpDir() {
     const dir = canPickDir ? await getErpDir() : null;
-    // 電腦端:有手機匯出的新檔 → 已有寫入權限就直接寫入,否則顯示一鍵寫入的按鈕
-    let pending = dir && can('hoursAll') ? await erpCloudPending() : null;
-    if (pending && (await erpCloudWrite(dir, pending, false))) pending = null;
     const perm = dir ? await dir.queryPermission({ mode: 'readwrite' }).catch(() => 'prompt') : '';
     for (const id of ['hsErpDir', 'erpDirBox']) {
       const box = $(id);
@@ -2843,16 +2809,13 @@
       // 變更/清除匯出路徑只限管理者
       const pick = isAdmin() ? h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => pickErpDir().catch(() => {}) }, dir ? '📁 變更' : '📁 選擇資料夾') : null;
       const clear = dir && isAdmin() ? h('button', { type: 'button', class: 'btn btn-danger-ghost btn-sm', onclick: async () => { await kv('readwrite', (st) => st.delete('erpDir')); renderErpDir(); } }, '清除') : null;
-      const hint = !canPickDir ? `手機按「🏭 ERP工時」會把 ${ERP_FILE} 存到雲端硬碟「${ERP_CLOUD_DIR}」資料夾;電腦開啟工時統計或設定頁時,會自動寫入電腦上指定的匯出資料夾`
+      const hint = !canPickDir ? `手機按「🏭 ERP工時」會把 ${ERP_FILE} 存到雲端硬碟「${ERP_CLOUD_DIR}」資料夾,電腦上的同步程式約 2 分鐘內自動寫入 ERP 資料夾(不需開啟網頁)`
         : !dir && !isAdmin() ? '匯出路徑由管理者設定;此電腦尚未設定,按「🏭 ERP工時」會改為下載 ' + ERP_FILE
         : !dir ? '請先選擇 ERP 匯入用的資料夾;之後按「🏭 ERP工時」就會直接寫入(覆寫)該資料夾的 ' + ERP_FILE
           : perm === 'granted' ? '✅ 已預設,按「🏭 ERP工時」即一鍵匯出(覆寫同名檔案)'
             : '已預設;瀏覽器重新開啟後第一次匯出會再詢問一次寫入權限(可選「每次造訪都允許」)';
-      const sync = pending ? h('div', { class: 'erp-pending' },
-        h('span', {}, `📱 手機匯出的 ${ERP_FILE}(${pending.lastModifyingUser ? pending.lastModifyingUser.displayName + ' ' : ''}${new Date(pending.modifiedTime).toLocaleString('zh-TW')})尚未寫入此電腦`),
-        h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: async () => { if (await erpCloudWrite(dir, pending, true)) renderErpDir(); } }, '⬇ 寫入資料夾')) : null;
       box.append(h('div', { class: 'panel erp-dir' }, h('div', { class: 'panel-title' }, 'ERP工時匯出路徑'),
-        canPickDir ? h('div', { class: 'erp-path-row' }, path, pick, clear) : null, sync, h('small', { class: 'hint' }, hint)));
+        canPickDir ? h('div', { class: 'erp-path-row' }, path, pick, clear) : null, h('small', { class: 'hint' }, hint)));
     }
   }
   async function pickErpDir() {
@@ -2885,7 +2848,7 @@
       try {
         busy('上傳 ' + ERP_FILE + '…');
         await erpCloudPut(bytes);
-        toast(`✅ 已匯出 ${rows.length} 筆到雲端硬碟「${ERP_CLOUD_DIR}/${ERP_FILE}」${note}。電腦開啟工時統計(或設定)頁時會自動寫入指定資料夾`, 7000);
+        toast(`✅ 已匯出 ${rows.length} 筆到雲端硬碟「${ERP_CLOUD_DIR}/${ERP_FILE}」${note},電腦約 2 分鐘內會自動寫入 ERP 資料夾`, 7000);
       } catch (e) { toast('ERP工時上傳失敗:' + errMsg(e), 6000); } finally { busy(''); }
       return;
     }
@@ -2897,7 +2860,6 @@
       const w = await (await dir.getFileHandle(ERP_FILE, { create: true })).createWritable();
       await w.write(bytes);
       await w.close();
-      await kv('readwrite', (st) => st.put(new Date().toISOString(), 'erpSynced')).catch(() => {}); // 之前手機匯出的雲端檔已過時,不再寫入
       toast(`✅ 已匯出 ${rows.length} 筆到「${dir.name}」資料夾的 ${ERP_FILE}${note}`, 5000);
       renderErpDir();
     } catch (e) {

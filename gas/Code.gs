@@ -42,6 +42,17 @@ function doGet(e) {
   }
 }
 
+// POST(電腦上的 erp-sync.ps1 用;金鑰放在內容裡,不放在網址)
+function doPost(e) {
+  try {
+    var b = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if (b.a === 'erp') return json(erpOut(String(b.key || ''), String(b.since || '')));
+    return json({ ok: false, error: '不支援的動作' });
+  } catch (err) {
+    return json({ ok: false, error: String((err && err.message) || err) });
+  }
+}
+
 function json(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
@@ -768,6 +779,31 @@ function resumeTitleOf(r) {
   var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(r.start || ''));
   var t = [m ? m[1] + '/' + m[2] + '/' + m[3] : '', r.code, r.name].filter(Boolean).join(' ');
   return (t ? t + ' ' : '') + '專案履歷';
+}
+
+// ---------- ERP 工時:手機匯出的 ERP-WT.xlsx(專案履歷檔同層「ERP工時」資料夾)→ 電腦上的排程程式(erp-sync.ps1)取回 ----------
+// 金鑰存在「指令碼屬性」ERP_KEY(不放在程式碼);第一次在編輯器執行 erpKeySetup 產生,並填入電腦的 erp-sync.key
+// since:電腦上次取回的修改時間(ISO);檔案沒有更新時只回傳時間,不回傳內容
+function erpOut(key, since) {
+  var want = PropertiesService.getScriptProperties().getProperty('ERP_KEY');
+  if (!want || key !== want) throw new Error('金鑰不符');
+  var parents = getFile().getParents();
+  if (!parents.hasNext()) throw new Error('找不到專案履歷檔所在的資料夾');
+  var dirs = parents.next().getFoldersByName('ERP工時');
+  if (!dirs.hasNext()) return { ok: true, none: true };
+  var files = dirs.next().getFilesByName('ERP-WT.xlsx'), f = null;
+  while (files.hasNext()) { var x = files.next(); if (!x.isTrashed() && (!f || x.getLastUpdated() > f.getLastUpdated())) f = x; }
+  if (!f) return { ok: true, none: true };
+  var mod = f.getLastUpdated().toISOString();
+  var out = { ok: true, modified: mod };
+  if (!since || mod > since) out.b64 = Utilities.base64Encode(f.getBlob().getBytes());
+  return out;
+}
+function erpKeySetup() {
+  var props = PropertiesService.getScriptProperties();
+  var k = props.getProperty('ERP_KEY');
+  if (!k) { k = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, ''); props.setProperty('ERP_KEY', k); }
+  Logger.log('ERP_KEY=' + k);
 }
 
 // ---------- 近期工作項目 → Google 日曆(App 存檔後呼叫 ?a=cal;也可在編輯器直接執行 syncCalendar) ----------
