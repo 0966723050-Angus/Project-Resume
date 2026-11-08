@@ -26,7 +26,7 @@
   const LS_FILES = 'pr_mock_files';
   const created = () => { try { return JSON.parse(localStorage.getItem(LS_FILES) || '{}'); } catch { return {}; } };
   const saveCreated = (o) => localStorage.setItem(LS_FILES, JSON.stringify(o));
-  const cMeta = (id, f) => ({ id, name: f.name, version: String(f.v || 1), modifiedTime: new Date().toISOString(), parents: ['folder0'], webViewLink: '#' });
+  const cMeta = (id, f) => ({ id, name: f.name, version: String(f.v || 1), modifiedTime: f.t || new Date().toISOString(), lastModifyingUser: { displayName: '測試者' }, parents: ['folder0'], webViewLink: '#' });
   window.Drive = {
     async ensureToken() { return 'mock'; },
     async requestToken() { return 'mock'; },
@@ -47,6 +47,7 @@
       const f = await this.findByName(name);
       return f && f.id === 'xlsx1' ? [{ ...f, id: 'copy1', parents: ['myDrive'] }, f] : f ? [f] : [];
     },
+    async findIn(name) { const c = created(); const cid = Object.keys(c).find((k) => c[k].name === name); return cid ? cMeta(cid, c[cid]) : null; },
     async getMeta(id) { return meta(idOf(id)); },
     async download(id) {
       const c = created()[id];
@@ -55,15 +56,15 @@
     },
     async upload(id, data) {
       const all = created();
-      if (all[id]) { const u8 = data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : new Uint8Array(data); all[id].b64 = b64(u8); all[id].v = (all[id].v || 1) + 1; saveCreated(all); return cMeta(id, all[id]); }
+      if (all[id]) { const u8 = data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : new Uint8Array(data); all[id].b64 = b64(u8); all[id].v = (all[id].v || 1) + 1; all[id].t = new Date().toISOString(); saveCreated(all); return cMeta(id, all[id]); }
       id = idOf(id); await wait(150); localStorage.setItem(SRC[id].ls, b64(new Uint8Array(data))); version[id]++; return meta(id);
     },
     async ensureFolder() { return 'folder1'; },
     async createFile(name, blob, mime) {
       await wait(100);
-      if (/json|text/.test(mime || '')) {
+      if (/json|text|sheet/.test(mime || '')) {
         const all = created(); const id = 'mockf' + Date.now();
-        all[id] = { name, b64: b64(new Uint8Array(await blob.arrayBuffer())), v: 1 }; saveCreated(all);
+        all[id] = { name, b64: b64(new Uint8Array(await blob.arrayBuffer())), v: 1, t: new Date().toISOString() }; saveCreated(all);
         return { id, name, mimeType: mime, webViewLink: '#' };
       }
       const id = 'mock' + (seq++); files[id] = blob; return { id, name, mimeType: mime, webViewLink: '#' };

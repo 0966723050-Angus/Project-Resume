@@ -175,6 +175,11 @@
     return (await findAllByName(name))[0] || null;
   }
 
+  // 在指定資料夾內依檔名找檔(最近修改的優先),找不到回傳 null
+  async function findIn(name, parentId) {
+    return (await listFiles(`name = '${q(name)}' and '${parentId}' in parents and trashed = false`, 5))[0] || null;
+  }
+
   async function getMeta(fileId) {
     const resp = await api(`${API}/${fileId}?supportsAllDrives=true&fields=${encodeURIComponent(META_FIELDS)}`);
     if (!resp.ok) throw await apiError(resp, '讀取檔案資訊');
@@ -262,5 +267,5 @@
 
   const viewLink = (id) => `https://drive.google.com/file/d/${id}/view`;
 
-  window.Drive = { IS_MOBILE, IN_APP, IS_ANDROID, redirectError: () => redirectError, requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, findAllByName, getMeta, download, upload, createFile, ensureFolder, media, trash, permissions, whoAmI, signOut, viewLink };
+  window.Drive = { IS_MOBILE, IN_APP, IS_ANDROID, redirectError: () => redirectError, requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, findAllByName, findIn, getMeta, download, upload, createFile, ensureFolder, media, trash, permissions, whoAmI, signOut, viewLink };
 })();
