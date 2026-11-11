@@ -633,7 +633,7 @@
     };
     let noticed = false; // 同一張表單只提醒一次
     chips.onclick = async () => {
-      if (!noticed && !S.data.resumes.some((r) => r.id === obj.id)) { noticed = true; await notice('填表人如有出席,也須勾選', 3000); }
+      if (!noticed && !S.data.resumes.some((r) => r.id === obj.id)) { noticed = true; await notice('填表人如有出席,也須勾選', 1000); }
       const v = await openPicker({ title: '作業人員', key: 'members', multi: true, selected: picked });
       if (v == null) return;
       picked = v;
@@ -886,17 +886,13 @@
     const t = [fmtDate(r.start), r.code, r.name].filter(Boolean).join(' ');
     return (t ? t + ' ' : '') + '專案履歷';
   }
-  function nowRounded() {
-    const t = new Date();
-    t.setMinutes(Math.floor(t.getMinutes() / 10) * 10);
-    return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}T${pad(t.getHours())}:${pad(t.getMinutes())}`;
-  }
 
   function openResume(id) {
     let obj, isNew = false;
     if (id === 'new') {
       isNew = true;
-      obj = { id: Store.newId('PR'), saved: true, code: '', name: '', plant: '', line: '', equip: '', unit: '', stage: '', start: nowRounded(), end: '', hours: '', members: '', work: '', images: '', files: '', problems: [], author: myName(), authorEmail: myEmail(), shareKey: newShareKey() };
+      obj = { id: Store.newId('PR'), saved: true, code: '', name: '', plant: '', line: '', equip: '', unit: '', stage: '', start: todayISO() + 'T08:30', end: todayISO() + 'T17:30', hours: '', // 工作時間預設 08:30~17:30
+      members: '', work: '', images: '', files: '', problems: [], author: myName(), authorEmail: myEmail(), shareKey: newShareKey() };
     } else {
       const r = S.data.resumes.find((x) => x.id === id);
       if (!r) { toast('找不到此專案履歷(可能已被刪除,或請重新載入)', 4000); replaceHash('#/'); showList(); return; }
