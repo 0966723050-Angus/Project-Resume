@@ -718,14 +718,38 @@
     img.classList.remove('broken');
     thumbCache.get(id).then((u) => { img.src = u; }).catch(() => { thumbCache.delete(id); img.alt = '無法載入'; img.classList.add('broken'); });
   }
-  function openLightbox(link) {
+  // 圖片檢視:可用上一張/下一張按鈕、鍵盤左右鍵或手機左右滑動切換
+  const LB = { list: [], idx: 0 };
+  function lbShow() {
+    const link = LB.list[LB.idx];
     $('lightboxImg').removeAttribute('src');
     loadThumb($('lightboxImg'), link.id);
     $('lightboxLink').href = link.url || '#';
     $('lightboxLink').hidden = !!S.public; // 免登入檢視不顯示「在雲端硬碟開啟」(需登入才能開)
+    const multi = LB.list.length > 1;
+    $('lbPrev').hidden = $('lbNext').hidden = $('lbCount').hidden = !multi;
+    $('lbCount').textContent = `${LB.idx + 1} / ${LB.list.length}`;
+  }
+  function lbStep(d) { if (LB.list.length < 2) return; LB.idx = (LB.idx + d + LB.list.length) % LB.list.length; lbShow(); }
+  function openLightbox(link, list) {
+    LB.list = (list || [link]).filter((l) => l.id);
+    LB.idx = Math.max(0, LB.list.findIndex((l) => l.id === link.id));
+    lbShow();
     $('lightbox').hidden = false;
   }
-  $('lightbox').onclick = (e) => { if (e.target.id !== 'lightboxLink') $('lightbox').hidden = true; };
+  $('lightbox').onclick = (e) => {
+    if (e.target.closest('.lb-nav')) { e.stopPropagation(); lbStep(e.target.closest('.lb-nav').id === 'lbPrev' ? -1 : 1); return; }
+    if (e.target.id !== 'lightboxLink') $('lightbox').hidden = true;
+  };
+  (() => {
+    let x0 = null, y0 = 0;
+    $('lightbox').addEventListener('touchstart', (e) => { if (e.touches.length === 1) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; } else x0 = null; }, { passive: true });
+    $('lightbox').addEventListener('touchend', (e) => {
+      if (x0 == null) return;
+      const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) { e.preventDefault(); lbStep(dx < 0 ? 1 : -1); }
+    });
+  })();
 
   // 檔案欄位(圖片或附件)
   function fFiles(label, obj, key, { image = false, prefix = () => '' } = {}) {
@@ -751,7 +775,7 @@
         if (image) {
           const img = h('img', { alt: ln.name, loading: 'lazy' });
           loadThumb(img, ln.id);
-          box.append(h('div', { class: 'thumb', title: ln.name, onclick: () => (ln.id ? openLightbox(ln) : null) }, img, remove));
+          box.append(h('div', { class: 'thumb', title: ln.name, onclick: () => (ln.id ? openLightbox(ln, links) : null) }, img, remove));
         } else {
           box.append(h('div', { class: 'attach' },
             ln.url ? h('a', { href: ln.url, target: '_blank', rel: 'noopener' }, '📎 ' + ln.name) : h('span', {}, '📎 ' + ln.name), remove));
@@ -1127,7 +1151,7 @@
       if (image) {
         const img = h('img', { alt: ln.name, loading: 'lazy' });
         loadThumb(img, ln.id);
-        box.append(h('div', { class: 'thumb', title: ln.name, onclick: () => (ln.id ? openLightbox(ln) : null) }, img));
+        box.append(h('div', { class: 'thumb', title: ln.name, onclick: () => (ln.id ? openLightbox(ln, links) : null) }, img));
       } else {
         const a = ln.url ? h('a', { href: ln.url, target: '_blank', rel: 'noopener' }, '📎 ' + ln.name) : h('span', {}, '📎 ' + ln.name);
         if (S.public && ln.id) a.onclick = (e) => { e.preventDefault(); publicDownload(ln); };
@@ -3358,6 +3382,7 @@
 
   // ---------- 其他 ----------
   document.addEventListener('keydown', (e) => {
+    if (!$('lightbox').hidden && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); lbStep(e.key === 'ArrowLeft' ? -1 : 1); return; }
     if (e.key === 'Escape') {
       if (!$('lightbox').hidden) $('lightbox').hidden = true;
       else if (picker) closePicker(null);
