@@ -602,6 +602,20 @@
 
   // 作業人員(Excel 欄名仍為「協同作業人員」):清單複選 + 手Key(手Key 名單放後面)
   const splitNames = (s) => String(s || '').split(/[、,，;；\n]+/).map((x) => x.trim()).filter(Boolean);
+  // 通知視窗:顯示 ms 毫秒後自動關閉(點一下也可提早關閉)
+  function notice(msg, ms) {
+    return new Promise((resolve) => {
+      const bar = h('div', { class: 'notice-bar' });
+      const box = h('div', { class: 'notice-box', role: 'alert' }, h('div', { class: 'notice-icon' }, '🔔'), h('div', { class: 'notice-msg' }, msg), bar);
+      const ov = h('div', { class: 'notice-ov' }, box);
+      let done = false;
+      const close = () => { if (done) return; done = true; clearTimeout(t); ov.remove(); resolve(); };
+      const t = setTimeout(close, ms);
+      ov.onclick = close;
+      document.body.append(ov);
+      bar.style.animationDuration = ms + 'ms';
+    });
+  }
   function fMembers(obj) {
     const all = splitNames(obj.members);
     const known = new Set(lists().members || []);
@@ -617,7 +631,9 @@
       for (const n of picked) chips.append(h('span', { class: 'mchip' }, n));
       chips.append(h('span', { class: 'caret' }, '▾'));
     };
+    let noticed = false; // 同一張表單只提醒一次
     chips.onclick = async () => {
+      if (!noticed && !S.data.resumes.some((r) => r.id === obj.id)) { noticed = true; await notice('填表人如有出席,也須勾選', 3000); }
       const v = await openPicker({ title: '作業人員', key: 'members', multi: true, selected: picked });
       if (v == null) return;
       picked = v;

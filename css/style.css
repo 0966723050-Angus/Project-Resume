@@ -691,3 +691,12 @@ a.sum-head::after { content: '›'; position: absolute; right: 12px; top: 50%; t
 .card-upd { margin-top: 6px; padding-top: 5px; border-top: 1px dashed var(--border); font-size: 12px; color: var(--muted); }
 #rClear { flex: none; }
 
+
+/* 通知視窗(數秒後自動關閉) */
+.notice-ov { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15, 23, 42, .35); }
+.notice-box { position: relative; overflow: hidden; width: min(340px, 100%); padding: 22px 18px 20px; border-radius: 14px; background: var(--surface); box-shadow: 0 12px 32px rgba(0,0,0,.25); text-align: center; animation: notice-in .18s ease-out; }
+.notice-icon { font-size: 30px; line-height: 1; margin-bottom: 8px; }
+.notice-msg { font-size: 17px; font-weight: 700; line-height: 1.5; }
+.notice-bar { position: absolute; left: 0; bottom: 0; height: 4px; width: 100%; background: var(--primary, #1e40af); transform-origin: left; animation: notice-bar linear forwards; }
+@keyframes notice-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes notice-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
