@@ -214,6 +214,14 @@ span.combo-btn { display: flex; align-items: center; justify-content: center; po
   position: absolute; top: 3px; right: 3px; width: 24px; height: 24px; border-radius: 50%; border: 0;
   background: rgba(0,0,0,.6); color: #fff; font-size: 12px; cursor: pointer; line-height: 24px; padding: 0;
 }
+.flabel-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.img-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.img-tools[hidden] { display: none; }
+.img-tools .btn:disabled { opacity: .45; cursor: default; }
+.gallery.selecting .x, .gallery.selecting .thumb.add { display: none; }
+.gallery.selecting .thumb::after { content: ''; position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: rgba(0,0,0,.35); box-shadow: 0 0 2px rgba(0,0,0,.6); }
+.gallery.selecting .thumb.picked { outline: 3px solid var(--primary); outline-offset: -3px; }
+.gallery.selecting .thumb.picked::after { content: '✓'; background: var(--primary); color: #fff; font-size: 14px; font-weight: 700; line-height: 18px; text-align: center; }
 .attach-list { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .attach { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 40px 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); font-size: 14px; overflow-wrap: anywhere; }
 .attach a { color: var(--primary); }
@@ -300,6 +308,9 @@ span.combo-btn { display: flex; align-items: center; justify-content: center; po
 .lb-prev { left: 10px; }
 .lb-next { right: 10px; }
 .lb-count { color: #fff; font-size: 14px; opacity: .85; }
+.lb-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.lb-actions .btn { background: rgba(255,255,255,.18); color: #fff; border: 0; }
+.lb-actions .btn[hidden] { display: none; }
 @media (max-width: 600px) { .lb-nav { width: 40px; height: 56px; font-size: 32px; background: rgba(0,0,0,.45); } .lb-prev { left: 4px; } .lb-next { right: 4px; } }
 .busy { position: fixed; inset: 0; z-index: 70; background: rgba(8, 12, 18, .35); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #fff; }
 .spinner { width: 38px; height: 38px; border: 4px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }

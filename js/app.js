@@ -718,6 +718,79 @@
     img.classList.remove('broken');
     thumbCache.get(id).then((u) => { img.src = u; }).catch(() => { thumbCache.delete(id); img.alt = '無法載入'; img.classList.add('broken'); });
   }
+  // 取得圖片檔案(沿用縮圖快取)
+  async function imgFile(ln) {
+    if (!thumbCache.has(ln.id)) loadThumb(new Image(), ln.id);
+    const b = await (await fetch(await thumbCache.get(ln.id))).blob();
+    let name = ln.name || 'image';
+    if (!/\.\w{2,5}$/.test(name)) name += '.' + ((b.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg'));
+    return new File([b], name, { type: b.type || 'image/jpeg' });
+  }
+  async function imgFiles(list) {
+    const out = [];
+    for (let i = 0; i < list.length; i++) {
+      if (list.length > 1) busy(`讀取圖片 ${i + 1}/${list.length}…`);
+      out.push(await imgFile(list[i]));
+    }
+    busy('');
+    return out;
+  }
+  const canShareFiles = () => !!(navigator.canShare && navigator.share);
+  async function downloadImages(list) {
+    try {
+      const files = await imgFiles(list);
+      for (const f of files) {
+        const a = h('a', { href: URL.createObjectURL(f), download: f.name });
+        document.body.append(a); a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+        await new Promise((r) => setTimeout(r, 350)); // 連續下載間隔,避免瀏覽器略過
+      }
+      toast(`已下載 ${files.length} 張圖片`);
+    } catch (err) { busy(''); toast('下載失敗:' + errMsg(err), 5000); }
+  }
+  async function shareImages(list) {
+    let files;
+    try { files = await imgFiles(list); } catch (err) { busy(''); toast('讀取圖片失敗:' + errMsg(err), 5000); return; }
+    if (!canShareFiles() || !navigator.canShare({ files })) { toast('此裝置不支援分享圖片,改為下載'); return downloadImages(list); }
+    try { await navigator.share({ files }); } catch (e) { if (e.name !== 'AbortError') toast('分享失敗:' + errMsg(e), 5000); }
+  }
+  // 圖片欄位的「選取」工具列:可複選後下載/分享
+  function imgTools(box, getLinks) {
+    const sel = new Set();
+    let on = false;
+    const bar = h('div', { class: 'img-tools' });
+    const picked = () => getLinks().filter((l) => l.id && sel.has(l.id));
+    const paint = () => {
+      box.classList.toggle('selecting', on);
+      box.querySelectorAll('.thumb[data-id]').forEach((t) => t.classList.toggle('picked', sel.has(t.dataset.id)));
+      const n = picked().length, all = getLinks().filter((l) => l.id);
+      bar.hidden = !all.length;
+      bar.innerHTML = '';
+      if (!on) { bar.append(h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { on = true; paint(); } }, '☑ 選取')); return; }
+      const allOn = n === all.length;
+      bar.append(...[
+        h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { if (allOn) sel.clear(); else all.forEach((l) => sel.add(l.id)); paint(); } }, allOn ? '取消全選' : '全選'),
+        h('button', { type: 'button', class: 'btn btn-primary btn-sm', disabled: !n, onclick: () => downloadImages(picked()) }, `⬇ 下載${n ? ` (${n})` : ''}`),
+        canShareFiles() ? h('button', { type: 'button', class: 'btn btn-primary btn-sm', disabled: !n, onclick: () => shareImages(picked()) }, `分享${n ? ` (${n})` : ''}`) : null,
+        h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { on = false; sel.clear(); paint(); } }, '完成'),
+      ].filter(Boolean));
+    };
+    // 選取模式時,點縮圖改為勾選(攔截在開啟大圖/移除之前)
+    box.addEventListener('click', (e) => {
+      if (!on) return;
+      const t = e.target.closest('.thumb');
+      if (!t) return;
+      e.stopPropagation(); e.preventDefault();
+      const id = t.dataset.id;
+      if (!id) return;
+      if (sel.has(id)) sel.delete(id); else sel.add(id);
+      paint();
+    }, true);
+    bar.refresh = () => { const ids = new Set(getLinks().map((l) => l.id)); [...sel].forEach((x) => { if (!ids.has(x)) sel.delete(x); }); paint(); };
+    paint();
+    return bar;
+  }
+
   // 圖片檢視:可用上一張/下一張按鈕、鍵盤左右鍵或手機左右滑動切換
   const LB = { list: [], idx: 0 };
   function lbShow() {
@@ -729,6 +802,7 @@
     const multi = LB.list.length > 1;
     $('lbPrev').hidden = $('lbNext').hidden = $('lbCount').hidden = !multi;
     $('lbCount').textContent = `${LB.idx + 1} / ${LB.list.length}`;
+    $('lbShare').hidden = !canShareFiles();
   }
   function lbStep(d) { if (LB.list.length < 2) return; LB.idx = (LB.idx + d + LB.list.length) % LB.list.length; lbShow(); }
   function openLightbox(link, list) {
@@ -738,6 +812,9 @@
     $('lightbox').hidden = false;
   }
   $('lightbox').onclick = (e) => {
+    if (e.target.id === 'lbDownload') { downloadImages([LB.list[LB.idx]]); return; }
+    if (e.target.id === 'lbShare') { shareImages([LB.list[LB.idx]]); return; }
+    if (e.target.closest('.lb-actions') && e.target.id !== 'lightboxLink') return;
     if (e.target.closest('.lb-nav')) { e.stopPropagation(); lbStep(e.target.closest('.lb-nav').id === 'lbPrev' ? -1 : 1); return; }
     if (e.target.id !== 'lightboxLink') $('lightbox').hidden = true;
   };
@@ -775,14 +852,16 @@
         if (image) {
           const img = h('img', { alt: ln.name, loading: 'lazy' });
           loadThumb(img, ln.id);
-          box.append(h('div', { class: 'thumb', title: ln.name, onclick: () => (ln.id ? openLightbox(ln, links) : null) }, img, remove));
+          box.append(h('div', { class: 'thumb', title: ln.name, 'data-id': ln.id || null, onclick: () => (ln.id ? openLightbox(ln, links) : null) }, img, remove));
         } else {
           box.append(h('div', { class: 'attach' },
             ln.url ? h('a', { href: ln.url, target: '_blank', rel: 'noopener' }, '📎 ' + ln.name) : h('span', {}, '📎 ' + ln.name), remove));
         }
       });
       box.append(h('button', { type: 'button', class: image ? 'thumb add' : 'btn btn-ghost btn-sm', onclick: () => input.click() }, image ? '＋ 圖片' : '＋ 上傳附件'));
+      if (tools) tools.refresh();
     };
+    const tools = image ? imgTools(box, () => parseLinks(obj[key])) : null;
     input.onchange = async () => {
       if (!input.files.length) return;
       try {
@@ -794,7 +873,7 @@
       input.value = '';
     };
     render();
-    return h('div', { class: 'field' }, h('span', { class: 'flabel' }, label), box, input);
+    return h('div', { class: 'field' }, h('div', { class: 'flabel-row' }, h('span', { class: 'flabel' }, label), tools), box, input);
   }
 
   // ---------- 專案履歷列表 ----------
@@ -1151,14 +1230,15 @@
       if (image) {
         const img = h('img', { alt: ln.name, loading: 'lazy' });
         loadThumb(img, ln.id);
-        box.append(h('div', { class: 'thumb', title: ln.name, onclick: () => (ln.id ? openLightbox(ln, links) : null) }, img));
+        box.append(h('div', { class: 'thumb', title: ln.name, 'data-id': ln.id || null, onclick: () => (ln.id ? openLightbox(ln, links) : null) }, img));
       } else {
         const a = ln.url ? h('a', { href: ln.url, target: '_blank', rel: 'noopener' }, '📎 ' + ln.name) : h('span', {}, '📎 ' + ln.name);
         if (S.public && ln.id) a.onclick = (e) => { e.preventDefault(); publicDownload(ln); };
         box.append(h('div', { class: 'attach' }, a));
       }
     }
-    return h('div', { class: 'ro-field' }, h('div', { class: 'flabel' }, label), box);
+    const tools = image ? imgTools(box, () => links) : null;
+    return h('div', { class: 'ro-field' }, h('div', { class: 'flabel-row' }, h('div', { class: 'flabel' }, label), tools), box);
   }
   // 履歷層級的圖片/附件(免登入檢視時 Apps Script 仍以各問題列回傳 → 合併)
   function resumeFiles(r, key) {
