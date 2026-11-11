@@ -754,22 +754,46 @@
     if (!canShareFiles() || !navigator.canShare({ files })) { toast('此裝置不支援分享圖片,改為下載'); return downloadImages(list); }
     try { await navigator.share({ files }); } catch (e) { if (e.name !== 'AbortError') toast('分享失敗:' + errMsg(e), 5000); }
   }
-  // 圖片欄位的「選取」工具列:可複選後下載/分享
-  function imgTools(box, getLinks) {
+  // 圖片欄位的工具列:「選取」可複選後下載/分享;編輯時「刪除」可複選後確認刪除
+  function imgTools(box, getLinks, onDelete) {
     const sel = new Set();
-    let on = false;
+    let on = false; // false | 'sel' | 'del'
     const bar = h('div', { class: 'img-tools' });
     const picked = () => getLinks().filter((l) => l.id && sel.has(l.id));
     const paint = () => {
-      box.classList.toggle('selecting', on);
+      box.classList.toggle('selecting', !!on);
+      box.classList.toggle('deleting', on === 'del');
       box.querySelectorAll('.thumb[data-id]').forEach((t) => t.classList.toggle('picked', sel.has(t.dataset.id)));
       const n = picked().length, all = getLinks().filter((l) => l.id);
       bar.hidden = !all.length;
       bar.innerHTML = '';
-      if (!on) { bar.append(h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { on = true; paint(); } }, '☑ 選取')); return; }
+      if (!on) {
+        bar.append(...[
+          h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { on = 'sel'; paint(); } }, '☑ 選取'),
+          onDelete ? h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { on = 'del'; paint(); } }, '🗑 刪除') : null,
+        ].filter(Boolean));
+        return;
+      }
       const allOn = n === all.length;
+      const allBtn = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { if (allOn) sel.clear(); else all.forEach((l) => sel.add(l.id)); paint(); } }, allOn ? '取消全選' : '全選');
+      if (on === 'del') {
+        bar.append(
+          allBtn,
+          h('button', {
+            type: 'button', class: 'btn btn-danger btn-sm', disabled: !n, onclick: async () => {
+              const list = picked();
+              if (!list.length) return;
+              if (!(await confirmYes('刪除圖片', `確定刪除選取的 ${list.length} 張圖片?`, '刪除', 'btn-danger'))) return;
+              on = false; sel.clear();
+              onDelete(list.map((l) => l.id));
+            },
+          }, `🗑 刪除${n ? ` (${n})` : ''}`),
+          h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { on = false; sel.clear(); paint(); } }, '取消'),
+        );
+        return;
+      }
       bar.append(...[
-        h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { if (allOn) sel.clear(); else all.forEach((l) => sel.add(l.id)); paint(); } }, allOn ? '取消全選' : '全選'),
+        allBtn,
         h('button', { type: 'button', class: 'btn btn-primary btn-sm', disabled: !n, onclick: () => downloadImages(picked()) }, `⬇ 下載${n ? ` (${n})` : ''}`),
         canShareFiles() ? h('button', { type: 'button', class: 'btn btn-primary btn-sm', disabled: !n, onclick: () => shareImages(picked()) }, `分享${n ? ` (${n})` : ''}`) : null,
         h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { on = false; sel.clear(); paint(); } }, '完成'),
@@ -797,8 +821,6 @@
     const link = LB.list[LB.idx];
     $('lightboxImg').removeAttribute('src');
     loadThumb($('lightboxImg'), link.id);
-    $('lightboxLink').href = link.url || '#';
-    $('lightboxLink').hidden = !!S.public; // 免登入檢視不顯示「在雲端硬碟開啟」(需登入才能開)
     const multi = LB.list.length > 1;
     $('lbPrev').hidden = $('lbNext').hidden = $('lbCount').hidden = !multi;
     $('lbCount').textContent = `${LB.idx + 1} / ${LB.list.length}`;
@@ -814,9 +836,9 @@
   $('lightbox').onclick = (e) => {
     if (e.target.id === 'lbDownload') { downloadImages([LB.list[LB.idx]]); return; }
     if (e.target.id === 'lbShare') { shareImages([LB.list[LB.idx]]); return; }
-    if (e.target.closest('.lb-actions') && e.target.id !== 'lightboxLink') return;
+    if (e.target.closest('.lb-actions')) return;
     if (e.target.closest('.lb-nav')) { e.stopPropagation(); lbStep(e.target.closest('.lb-nav').id === 'lbPrev' ? -1 : 1); return; }
-    if (e.target.id !== 'lightboxLink') $('lightbox').hidden = true;
+    $('lightbox').hidden = true;
   };
   (() => {
     let x0 = null, y0 = 0;
@@ -852,7 +874,7 @@
         if (image) {
           const img = h('img', { alt: ln.name, loading: 'lazy' });
           loadThumb(img, ln.id);
-          box.append(h('div', { class: 'thumb', title: ln.name, 'data-id': ln.id || null, onclick: () => (ln.id ? openLightbox(ln, links) : null) }, img, remove));
+          box.append(h('div', { class: 'thumb', title: ln.name, 'data-id': ln.id || null, onclick: () => (ln.id ? openLightbox(ln, links) : null) }, img));
         } else {
           box.append(h('div', { class: 'attach' },
             ln.url ? h('a', { href: ln.url, target: '_blank', rel: 'noopener' }, '📎 ' + ln.name) : h('span', {}, '📎 ' + ln.name), remove));
@@ -861,7 +883,14 @@
       box.append(h('button', { type: 'button', class: image ? 'thumb add' : 'btn btn-ghost btn-sm', onclick: () => input.click() }, image ? '＋ 圖片' : '＋ 上傳附件'));
       if (tools) tools.refresh();
     };
-    const tools = image ? imgTools(box, () => parseLinks(obj[key])) : null;
+    const tools = image ? imgTools(box, () => parseLinks(obj[key]), (ids) => {
+      obj[key] = joinLinks(parseLinks(obj[key]).filter((l) => !ids.includes(l.id)));
+      // 這次剛上傳、尚未存檔的檔案直接移到垃圾桶
+      if (editing) for (const id of ids) if (editing.uploads.includes(id)) { editing.uploads = editing.uploads.filter((x) => x !== id); Drive.trash(id).catch(() => {}); }
+      render();
+      markDirty();
+      toast(`已刪除 ${ids.length} 張圖片(存檔後生效)`);
+    }) : null;
     input.onchange = async () => {
       if (!input.files.length) return;
       try {

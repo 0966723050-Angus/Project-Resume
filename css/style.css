@@ -221,6 +221,8 @@ span.combo-btn { display: flex; align-items: center; justify-content: center; po
 .gallery.selecting .x, .gallery.selecting .thumb.add { display: none; }
 .gallery.selecting .thumb::after { content: ''; position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: rgba(0,0,0,.35); box-shadow: 0 0 2px rgba(0,0,0,.6); }
 .gallery.selecting .thumb.picked { outline: 3px solid var(--primary); outline-offset: -3px; }
+.gallery.deleting .thumb.picked { outline-color: var(--danger, #dc2626); }
+.gallery.deleting .thumb.picked::after { background: var(--danger, #dc2626); }
 .gallery.selecting .thumb.picked::after { content: '✓'; background: var(--primary); color: #fff; font-size: 14px; font-weight: 700; line-height: 18px; text-align: center; }
 .attach-list { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .attach { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 40px 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); font-size: 14px; overflow-wrap: anywhere; }
