@@ -2911,44 +2911,49 @@
     if (ok) go(rangeHash(normRange(from.value, to.value, code.value)));
   }
   const hsRange = () => normRange($('hsFrom').value, $('hsTo').value, $('hsCode').value);
-  // 彙整:各專案 工程 / 研發 / 外包 三列 + 合計(外包 = 非公司人員;研發 = 報工類別「設計」;其餘公司人員工時算工程)
+  // 彙整:各專案 工程 / 研發 / 外包 三列 + 小計(工程+研發)+ 總時數
+  // 外包 = 非公司人員;研發 = 報工類別「設計」;其餘公司人員工時算工程。NA、AF 開頭的專案不列入
   const HM_KINDS = ['工程', '研發', '外包'];
+  const HM_SKIP = /^(NA|AF)/i;
   function showHourSum(q) {
     const rg = normRange(q.from, q.to, q.code);
     showView('hoursSumView', { title: '工時彙整', sub: rangeText(rg), back: rangeHash(rg) });
     const m = new Map();
     for (const r of hourStats(rg)) {
+      if (HM_SKIP.test(String(r.code || '').trim())) continue;
       const k = r.dept === '外包' ? '外包' : r.cat === '設計' ? '研發' : '工程';
       const x = m.get(r.code) || { code: r.code, pname: r.pname, h: { 工程: 0, 研發: 0, 外包: 0 } };
       if (!x.pname && r.pname) x.pname = r.pname;
       x.h[k] += r.hours;
       m.set(r.code, x);
     }
-    const list = [...m.values()].sort((a, b) => Store.compareCode(b.code, a.code));
-    const sum = (x) => HM_KINDS.reduce((t, k) => t + x.h[k], 0);
-    const tot = { 工程: 0, 研發: 0, 外包: 0 };
-    list.forEach((x) => HM_KINDS.forEach((k) => { tot[k] += x.h[k]; }));
-    const grand = HM_KINDS.reduce((t, k) => t + tot[k], 0);
-    $('hmCount').textContent = list.length ? `${rangeText(rg)} 共 ${list.length} 個專案,合計 ${fmtH(grand)} 小時(工程 ${fmtH(tot.工程)}、研發 ${fmtH(tot.研發)}、外包 ${fmtH(tot.外包)})` : '';
+    const list = [...m.values()].filter((x) => HM_KINDS.some((k) => x.h[k])).sort((a, b) => Store.compareCode(b.code, a.code));
+    const tot = { code: '', pname: '', h: { 工程: 0, 研發: 0, 外包: 0 } };
+    list.forEach((x) => HM_KINDS.forEach((k) => { tot.h[k] += x.h[k]; }));
+    const sub = (x) => x.h.工程 + x.h.研發;
+    const all = (x) => sub(x) + x.h.外包;
+    $('hmCount').innerHTML = '';
     $('hmEmpty').hidden = !!list.length;
     const box = $('hmTable');
     box.innerHTML = '';
     if (!list.length) return;
-    const rows = [];
-    for (const x of list) {
-      HM_KINDS.forEach((k, i) => rows.push(h('tr', { class: i ? '' : 'hm-first' },
-        i ? null : h('td', { class: 'hm-proj', rowspan: '3' }, h('b', {}, x.code || '(未填代號)'), x.pname ? h('small', {}, x.pname) : ''),
-        h('td', { class: 'hm-cat' }, k),
-        h('td', { class: 'num' + (x.h[k] ? '' : ' hm-zero') }, fmtH(x.h[k])),
-        i ? null : h('td', { class: 'num hm-total', rowspan: '3' }, fmtH(sum(x))))));
-    }
-    box.append(h('table', { class: 'hr-table hm-table' },
-      h('thead', {}, h('tr', {}, h('th', {}, '專案代號 / 名稱'), h('th', {}, '類別'), h('th', { class: 'num' }, '工時'), h('th', { class: 'num' }, '總時數'))),
-      h('tbody', {}, ...rows),
-      h('tfoot', {}, ...HM_KINDS.map((k, i) => h('tr', { class: i ? '' : 'hm-first' },
-        i ? null : h('td', { rowspan: '3' }, '合計'),
-        h('td', { class: 'hm-cat' }, k), h('td', { class: 'num' }, fmtH(tot[k])),
-        i ? null : h('td', { class: 'num hm-total', rowspan: '3' }, fmtH(grand)))))));
+    // 上方摘要卡片
+    const stat = (label, v, cls) => h('div', { class: 'hm-stat ' + cls }, h('span', {}, label), h('b', {}, fmtH(v)));
+    $('hmCount').append(h('div', { class: 'hm-stats' },
+      stat('專案數', list.length, 'is-n'), stat('工程', tot.h.工程, 'k-eng'), stat('研發', tot.h.研發, 'k-rd'),
+      stat('小計', sub(tot), 'is-sub'), stat('外包', tot.h.外包, 'k-out'), stat('總時數', all(tot), 'is-all')));
+    const num = (v) => h('td', { class: 'num' + (v ? '' : ' hm-zero') }, v ? fmtH(v) : '–');
+    const block = (x, isTotal) => HM_KINDS.map((k, i) => h('tr', { class: (i ? '' : 'hm-first ') + 'k-' + ({ 工程: 'eng', 研發: 'rd', 外包: 'out' })[k] },
+      i ? null : h('td', { class: 'hm-proj', rowspan: '3' }, isTotal ? h('b', {}, '合計') : [h('b', {}, x.code || '(未填代號)'), x.pname ? h('small', {}, x.pname) : '']),
+      h('td', { class: 'hm-cat' }, h('span', { class: 'hm-chip' }, k)),
+      num(x.h[k]),
+      i === 0 ? h('td', { class: 'num hm-sub', rowspan: '2' }, fmtH(sub(x))) : i === 2 ? h('td', { class: 'num hm-sub hm-sub-na' }, '') : null,
+      i ? null : h('td', { class: 'num hm-total', rowspan: '3' }, fmtH(all(x)))));
+    box.append(h('table', { class: 'hm-table' },
+      h('thead', {}, h('tr', {}, h('th', {}, '專案'), h('th', {}, '類別'), h('th', { class: 'num' }, '工時'), h('th', { class: 'num' }, '小計'), h('th', { class: 'num' }, '總時數'))),
+      ...list.map((x) => h('tbody', { class: 'hm-group' }, ...block(x))),
+      h('tfoot', {}, ...block(tot, true))));
+    box.append(h('div', { class: 'hm-note' }, '小計 = 工程 + 研發;總時數 = 小計 + 外包。研發為報工類別「設計」,外包為非公司人員;NA、AF 開頭的專案不列入。'));
   }
   function showHourStats(q) {
     const rg = normRange(q.from, q.to, q.code);

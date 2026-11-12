@@ -633,15 +633,55 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
 .hs-count-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 10px; }
 .hs-count-row .count-line { margin: 0 2px; flex: 1 1 auto; min-width: 0; }
 .hs-count-row .btn { flex: none; }
-.hm-table th { text-align: left !important; }
-.hm-table th.num, .hm-table td.num { text-align: right !important; }
-.hm-table td { vertical-align: middle; }
-.hm-table td.hm-proj { width: 100%; }
-.hm-table td.hm-cat { white-space: nowrap; color: var(--muted); }
-.hm-table td.hm-total { font-weight: 700; font-size: 15px; border-left: 1px solid var(--border); text-align: center !important; }
-.hm-table tbody tr.hm-first td { border-top: 2px solid var(--border); }
-.hm-table td.hm-zero { color: var(--muted); }
-.hm-table tfoot td { font-weight: 700; border-bottom: 0; }
+/* ---- 工時彙整 ---- */
+#hoursSumView { --k-eng: #2563eb; --k-eng-soft: #dbeafe; --k-rd: #7c3aed; --k-rd-soft: #ede9fe; --k-out: #d97706; --k-out-soft: #fef3c7; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #hoursSumView { --k-eng: #60a5fa; --k-eng-soft: #1e3a5f; --k-rd: #a78bfa; --k-rd-soft: #2e2550; --k-out: #fbbf24; --k-out-soft: #3d2c0a; } }
+:root[data-theme="dark"] #hoursSumView { --k-eng: #60a5fa; --k-eng-soft: #1e3a5f; --k-rd: #a78bfa; --k-rd-soft: #2e2550; --k-out: #fbbf24; --k-out-soft: #3d2c0a; }
+.hm-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 2px 0 12px; }
+@media (max-width: 640px) { .hm-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.hm-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; box-shadow: var(--shadow); border-top: 3px solid var(--border); }
+.hm-stat span { display: block; font-size: 12px; color: var(--muted); }
+.hm-stat b { display: block; font-size: 19px; color: var(--text); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.hm-stat.k-eng { border-top-color: var(--k-eng); } .hm-stat.k-eng b { color: var(--k-eng); }
+.hm-stat.k-rd { border-top-color: var(--k-rd); } .hm-stat.k-rd b { color: var(--k-rd); }
+.hm-stat.k-out { border-top-color: var(--k-out); } .hm-stat.k-out b { color: var(--k-out); }
+.hm-stat.is-sub { border-top-color: var(--primary); }
+.hm-stat.is-all { border-top-color: var(--primary); background: var(--primary); }
+.hm-stat.is-all span, .hm-stat.is-all b { color: var(--on-primary); }
+#hoursSumView .hr-table-wrap { padding: 0; overflow: hidden; }
+.hm-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+.hm-table th { position: sticky; top: 0; background: var(--primary); color: var(--on-primary); font-weight: 600; font-size: 13px; padding: 10px 8px; text-align: left; white-space: nowrap; }
+.hm-table th.num { text-align: right; }
+.hm-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.hm-table .num { text-align: right; white-space: nowrap; }
+.hm-table tbody.hm-group:nth-of-type(even) td { background: var(--surface-2); }
+.hm-table tbody.hm-group:hover td { background: var(--primary-soft); }
+.hm-table tbody.hm-group tr:last-child td, .hm-table td[rowspan="3"] { border-bottom: 2px solid var(--border); }
+.hm-table td.hm-proj { width: 100%; min-width: 0; }
+.hm-table td.hm-proj b { display: block; font-size: 14.5px; }
+.hm-table td.hm-proj small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+.hm-table td.hm-cat { white-space: nowrap; padding-left: 4px; }
+.hm-chip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.hm-table tr.k-eng .hm-chip { background: var(--k-eng-soft); color: var(--k-eng); }
+.hm-table tr.k-rd .hm-chip { background: var(--k-rd-soft); color: var(--k-rd); }
+.hm-table tr.k-out .hm-chip { background: var(--k-out-soft); color: var(--k-out); }
+.hm-table td.hm-zero { color: var(--muted); opacity: .6; }
+.hm-table td.hm-sub { font-weight: 700; color: var(--primary); border-left: 1px dashed var(--border); }
+.hm-table td.hm-sub-na { border-left: 1px dashed var(--border); }
+.hm-table td.hm-total { font-weight: 800; font-size: 16px; text-align: center; border-left: 1px solid var(--border); color: var(--text); }
+.hm-table tfoot td { background: var(--primary-soft) !important; font-weight: 700; border-bottom: 1px solid var(--border); }
+.hm-table tfoot td.hm-proj b { font-size: 15px; color: var(--primary); }
+.hm-table tfoot td.hm-total { background: var(--primary) !important; color: var(--on-primary); font-size: 17px; }
+.hm-note { font-size: 12px; color: var(--muted); padding: 10px 12px; }
+@media (min-width: 700px) { .hm-table td.hm-proj { width: auto; padding-left: 16px; } .hm-table th:first-child { padding-left: 16px; } .hm-table th.num, .hm-table td.num { width: 120px; padding-right: 16px; } .hm-table td.hm-cat, .hm-table th:nth-child(2) { width: 90px; } }
+@media (max-width: 480px) {
+  .hm-table { font-size: 13px; }
+  .hm-table th, .hm-table td { padding: 6px 4px; }
+  .hm-table th { font-size: 12px; }
+  .hm-chip { padding: 1px 6px; font-size: 11.5px; }
+  .hm-table td.hm-total { font-size: 14.5px; }
+  .hm-stat b { font-size: 16px; }
+}
 .hs-table th { text-align: left !important; }
 .hs-table th.num, .hs-table td.num { text-align: right !important; }
 .hs-table td { white-space: nowrap; }
