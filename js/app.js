@@ -157,7 +157,7 @@
       a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm') || (id === 'workView' && a.dataset.nav === 'work') || (id === 'ganttView' && a.dataset.nav === 'gantt') || (id.startsWith('hours') && a.dataset.nav === 'hours'));
     }
     document.body.classList.toggle('wide-main', id === 'ganttView');
-    document.body.classList.toggle('full-title', id === 'resumeView'); // 履歷編輯頁:標題可換行完整顯示 // 甘特圖用滿整個寬度
+    document.body.classList.toggle('full-title', id === 'resumeView' || id === 'readView'); // 履歷編輯頁:標題可換行完整顯示 // 甘特圖用滿整個寬度
     window.scrollTo(0, 0);
   }
   function setTitle(title, sub) {
@@ -1283,6 +1283,7 @@
   function renderResumeRead(r) {
     editing = null;
     showView('readView', { title: resumeTitle(r), sub: authorLine(r), back: S.public ? null : '#/', link: true });
+    $('linkBtn').hidden = true; // 唯讀檢視:不顯示複製連結,讓標題完整顯示
     if (S.public) $('menuBtn').hidden = true; else renderResumeNav(r.id);
     $('readNote').textContent = '🔒 唯讀檢視' + (S.public ? '' : canEdit(r) ? '(要修改請從首頁查詢後開啟)' : '');
     const body = $('readBody');
