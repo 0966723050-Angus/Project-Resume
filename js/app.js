@@ -141,7 +141,7 @@
   }
 
   // ---------- 頁首 / 版面 ----------
-  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmSumView', 'pmEditView', 'schedView', 'workView', 'ganttView', 'hoursView', 'hoursStatsView', 'settingsView'];
+  const VIEWS = ['welcome', 'listView', 'resumeView', 'readView', 'remainView', 'remainEditView', 'pmListView', 'pmSumView', 'pmEditView', 'schedView', 'workView', 'ganttView', 'hoursView', 'hoursStatsView', 'hoursSumView', 'settingsView'];
   function showView(id, { title = 'ATK專案履歷', sub = '', back = null, save = false, link = false } = {}) {
     for (const v of VIEWS) $(v).hidden = v !== id;
     setTitle(title, sub);
@@ -234,6 +234,7 @@
     else if (parts[0] === 'pm' && can('pmView')) (parts[1] && !(parts[1] === 'new' && !can('pmEdit')) ? openPm(parts[1], q) : showPmList());
     else if (parts[0] === 'sched' && parts[1] && can('pmView')) openSched(parts[1]);
     else if (parts[0] === 'hours' && parts[1] === 'stats' && can('hoursAll')) showHourStats({ from: q.get('m'), to: q.get('to'), code: q.get('code') });
+    else if (parts[0] === 'hours' && parts[1] === 'sum' && can('hoursAll')) showHourSum({ from: q.get('m'), to: q.get('to'), code: q.get('code') });
     else if (parts[0] === 'hours') showHours();
     else if (parts[0] === 'work') WorkList.show('list');
     else if (parts[0] === 'gantt') WorkList.show('gantt');
@@ -2910,6 +2911,45 @@
     if (ok) go(rangeHash(normRange(from.value, to.value, code.value)));
   }
   const hsRange = () => normRange($('hsFrom').value, $('hsTo').value, $('hsCode').value);
+  // 彙整:各專案 工程 / 研發 / 外包 三列 + 合計(外包 = 非公司人員;研發 = 報工類別「設計」;其餘公司人員工時算工程)
+  const HM_KINDS = ['工程', '研發', '外包'];
+  function showHourSum(q) {
+    const rg = normRange(q.from, q.to, q.code);
+    showView('hoursSumView', { title: '工時彙整', sub: rangeText(rg), back: rangeHash(rg) });
+    const m = new Map();
+    for (const r of hourStats(rg)) {
+      const k = r.dept === '外包' ? '外包' : r.cat === '設計' ? '研發' : '工程';
+      const x = m.get(r.code) || { code: r.code, pname: r.pname, h: { 工程: 0, 研發: 0, 外包: 0 } };
+      if (!x.pname && r.pname) x.pname = r.pname;
+      x.h[k] += r.hours;
+      m.set(r.code, x);
+    }
+    const list = [...m.values()].sort((a, b) => Store.compareCode(b.code, a.code));
+    const sum = (x) => HM_KINDS.reduce((t, k) => t + x.h[k], 0);
+    const tot = { 工程: 0, 研發: 0, 外包: 0 };
+    list.forEach((x) => HM_KINDS.forEach((k) => { tot[k] += x.h[k]; }));
+    const grand = HM_KINDS.reduce((t, k) => t + tot[k], 0);
+    $('hmCount').textContent = list.length ? `${rangeText(rg)} 共 ${list.length} 個專案,合計 ${fmtH(grand)} 小時(工程 ${fmtH(tot.工程)}、研發 ${fmtH(tot.研發)}、外包 ${fmtH(tot.外包)})` : '';
+    $('hmEmpty').hidden = !!list.length;
+    const box = $('hmTable');
+    box.innerHTML = '';
+    if (!list.length) return;
+    const rows = [];
+    for (const x of list) {
+      HM_KINDS.forEach((k, i) => rows.push(h('tr', { class: i ? '' : 'hm-first' },
+        i ? null : h('td', { class: 'hm-proj', rowspan: '3' }, h('b', {}, x.code || '(未填代號)'), x.pname ? h('small', {}, x.pname) : ''),
+        h('td', { class: 'hm-cat' }, k),
+        h('td', { class: 'num' + (x.h[k] ? '' : ' hm-zero') }, fmtH(x.h[k])),
+        i ? null : h('td', { class: 'num hm-total', rowspan: '3' }, fmtH(sum(x))))));
+    }
+    box.append(h('table', { class: 'hr-table hm-table' },
+      h('thead', {}, h('tr', {}, h('th', {}, '專案代號 / 名稱'), h('th', {}, '類別'), h('th', { class: 'num' }, '工時'), h('th', { class: 'num' }, '總時數'))),
+      h('tbody', {}, ...rows),
+      h('tfoot', {}, ...HM_KINDS.map((k, i) => h('tr', { class: i ? '' : 'hm-first' },
+        i ? null : h('td', { rowspan: '3' }, '合計'),
+        h('td', { class: 'hm-cat' }, k), h('td', { class: 'num' }, fmtH(tot[k])),
+        i ? null : h('td', { class: 'num hm-total', rowspan: '3' }, fmtH(grand)))))));
+  }
   function showHourStats(q) {
     const rg = normRange(q.from, q.to, q.code);
     $('hsFrom').value = rg.from;
@@ -2920,7 +2960,7 @@
     const total = rows.reduce((t, r) => t + r.hours, 0);
     $('hsCount').textContent = rows.length ? `${rangeText(rg)} 共 ${new Set(rows.map((r) => r.name)).size} 人、${new Set(rows.map((r) => r.code)).size} 個作業項目,合計 ${fmtH(total)} 小時` : '';
     $('hsEmpty').hidden = !!rows.length;
-    $('hsExport').disabled = $('hsErp').disabled = !rows.length;
+    $('hsExport').disabled = $('hsErp').disabled = $('hsSum').disabled = !rows.length;
     renderErpDir();
     const box = $('hsTable');
     box.innerHTML = '';
@@ -3050,6 +3090,7 @@
     }
   }
   $('hsErp').onclick = exportErp;
+  $('hsSum').onclick = () => go(rangeHash(hsRange()).replace('#/hours/stats', '#/hours/sum'));
   $('hrStatsBtn').onclick = askStatsMonth;
   for (const id of ['hsFrom', 'hsTo', 'hsCode']) $(id).onchange = () => { const rg = hsRange(); replaceHash(rangeHash(rg)); showHourStats(rg); };
   $('hsExport').onclick = () => {

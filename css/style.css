@@ -630,6 +630,18 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
 .hs-ask .hs-range { flex: none; }
 .hs-ask .hs-range input, .hs-ask select { width: 100%; min-height: 44px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 16px; background: var(--surface-2); color: inherit; }
 .hs-ask .field + .field { margin-top: 12px; }
+.hs-count-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 10px; }
+.hs-count-row .count-line { margin: 0 2px; flex: 1 1 auto; min-width: 0; }
+.hs-count-row .btn { flex: none; }
+.hm-table th { text-align: left !important; }
+.hm-table th.num, .hm-table td.num { text-align: right !important; }
+.hm-table td { vertical-align: middle; }
+.hm-table td.hm-proj { width: 100%; }
+.hm-table td.hm-cat { white-space: nowrap; color: var(--muted); }
+.hm-table td.hm-total { font-weight: 700; font-size: 15px; border-left: 1px solid var(--border); text-align: center !important; }
+.hm-table tbody tr.hm-first td { border-top: 2px solid var(--border); }
+.hm-table td.hm-zero { color: var(--muted); }
+.hm-table tfoot td { font-weight: 700; border-bottom: 0; }
 .hs-table th { text-align: left !important; }
 .hs-table th.num, .hs-table td.num { text-align: right !important; }
 .hs-table td { white-space: nowrap; }

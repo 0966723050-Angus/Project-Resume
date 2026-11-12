@@ -297,8 +297,14 @@
         <button id="hsErp" class="btn btn-primary btn-sm" type="button">🏭 ERP工時</button>
       </div>
       <div id="hsErpDir"></div>
-      <div id="hsCount" class="count-line"></div>
+      <div class="hs-count-row"><div id="hsCount" class="count-line"></div><button id="hsSum" class="btn btn-primary btn-sm" type="button">📊 彙整</button></div>
       <div class="panel hr-table-wrap"><div id="hsTable"></div><div id="hsEmpty" class="empty" hidden>這個範圍沒有工時紀錄</div></div>
+    </section>
+
+    <!-- 工時彙整(各專案:工程/研發/外包) -->
+    <section id="hoursSumView" class="view" hidden>
+      <div id="hmCount" class="count-line"></div>
+      <div class="panel hr-table-wrap"><div id="hmTable"></div><div id="hmEmpty" class="empty" hidden>這個範圍沒有工時紀錄</div></div>
     </section>
 
     <section id="settingsView" class="view" hidden>
