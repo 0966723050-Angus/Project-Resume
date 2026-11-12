@@ -291,13 +291,14 @@
     <!-- 工時統計(全員) -->
     <section id="hoursStatsView" class="view" hidden>
       <div class="filter-bar">
-        <input id="hsMonth" type="month" aria-label="統計月份">
+        <div class="hs-range"><input id="hsFrom" type="month" aria-label="起始月份"><span>~</span><input id="hsTo" type="month" aria-label="結束月份"></div>
+        <select id="hsCode" aria-label="專案代號"></select>
         <button id="hsExport" class="btn btn-ghost btn-sm" type="button">⬇️ 匯出 Excel</button>
         <button id="hsErp" class="btn btn-primary btn-sm" type="button">🏭 ERP工時</button>
       </div>
       <div id="hsErpDir"></div>
       <div id="hsCount" class="count-line"></div>
-      <div class="panel hr-table-wrap"><div id="hsTable"></div><div id="hsEmpty" class="empty" hidden>這個月份沒有工時紀錄</div></div>
+      <div class="panel hr-table-wrap"><div id="hsTable"></div><div id="hsEmpty" class="empty" hidden>這個範圍沒有工時紀錄</div></div>
     </section>
 
     <section id="settingsView" class="view" hidden>

@@ -621,7 +621,15 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
 }
 .hr-entry .field input[type="text"], .hr-entry .field input[type="date"], .hr-entry .field textarea, .hr-entry .dt-sel { background: var(--surface); }
 #hrStatsBtn, #hsExport { flex: none; min-height: 44px; }
-#hsMonth { flex: 1 1 auto; }
+#hoursStatsView .filter-bar { flex-wrap: wrap; }
+#hoursStatsView .filter-bar .btn { flex: 1 1 auto; }
+.hs-range { display: flex; align-items: center; gap: 6px; flex: 1 1 260px; min-width: 0; }
+.hs-range input { flex: 1 1 0; min-width: 0; }
+#hsCode { flex: 1 1 100%; min-width: 0; }
+@media (min-width: 760px) { #hsCode { flex: 1 1 200px; } }
+.hs-ask .hs-range { flex: none; }
+.hs-ask .hs-range input, .hs-ask select { width: 100%; min-height: 44px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 16px; background: var(--surface-2); color: inherit; }
+.hs-ask .field + .field { margin-top: 12px; }
 .hs-table th { text-align: left !important; }
 .hs-table th.num, .hs-table td.num { text-align: right !important; }
 .hs-table td { white-space: nowrap; }
