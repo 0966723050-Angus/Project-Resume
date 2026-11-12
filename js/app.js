@@ -156,7 +156,8 @@
     for (const a of document.querySelectorAll('[data-nav]')) {
       a.classList.toggle('active', (id === 'listView' && a.dataset.nav === 'list') || (id.startsWith('remain') && a.dataset.nav === 'remain') || (id === 'settingsView' && a.dataset.nav === 'settings') || ((id.startsWith('pm') || id === 'schedView') && a.dataset.nav === 'pm') || (id === 'workView' && a.dataset.nav === 'work') || (id === 'ganttView' && a.dataset.nav === 'gantt') || (id.startsWith('hours') && a.dataset.nav === 'hours'));
     }
-    document.body.classList.toggle('wide-main', id === 'ganttView'); // 甘特圖用滿整個寬度
+    document.body.classList.toggle('wide-main', id === 'ganttView');
+    document.body.classList.toggle('full-title', id === 'resumeView'); // 履歷編輯頁:標題可換行完整顯示 // 甘特圖用滿整個寬度
     window.scrollTo(0, 0);
   }
   function setTitle(title, sub) {
@@ -1037,7 +1038,7 @@
     editing = { type: 'resume', obj, snapshot: JSON.stringify(obj), isNew, createdHere: isNew, uploads: [] };
     $('deleteResume').hidden = !isAdmin() || isNew;
     showView('resumeView', { title: resumeTitle(obj), sub: authorLine(obj) + (isNew ? '(新增)' : ''), back: '#/', save: true, link: true });
-    if (!isNew) renderResumeNav(obj.id);
+    $('linkBtn').hidden = true; // 編輯頁:不顯示 ‹ › 與複製連結,讓標題完整顯示
     renderResumeForm();
     markDirty();
   }
@@ -1140,7 +1141,6 @@
     editing.obj = clone(res);
     editing.snapshot = JSON.stringify(editing.obj);
     replaceHash('#/r/' + encodeURIComponent(res.id));
-    renderResumeNav(res.id);
     $('deleteResume').hidden = !isAdmin();
     setTitle(resumeTitle(res), authorLine(res));
     renderResumeForm();
