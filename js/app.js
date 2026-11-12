@@ -2917,7 +2917,7 @@
   const HM_SKIP = /^(NA|AF)/i;
   function showHourSum(q) {
     const rg = normRange(q.from, q.to, q.code);
-    showView('hoursSumView', { title: '工時彙整', sub: rangeText(rg), back: rangeHash(rg) });
+    showView('hoursSumView', { title: '專案工時彙整', sub: rangeText(rg), back: rangeHash(rg) });
     const m = new Map();
     for (const r of hourStats(rg)) {
       if (HM_SKIP.test(String(r.code || '').trim())) continue;
