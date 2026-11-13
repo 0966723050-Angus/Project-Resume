@@ -742,7 +742,7 @@ function pmReportHtml(list, remains) {
 function dingSend(res, key) {
   var cache = CacheService.getScriptCache();
   if (cache.get('ding_' + res.id)) throw new Error('剛剛已傳送過,請稍後再試');
-  var title = resumeTitleOf(res);
+  var title = resumeTitleOf(res) + (res.author ? '_' + String(res.author).trim() : ''); // 連結名稱後加 _填表人
   var url = APP_URL + '#/v/' + encodeURIComponent(res.id) + '?k=' + encodeURIComponent(key);
   dingPost(title, '[' + title.replace(/[\[\]]/g, '') + '](' + url + ')');
   cache.put('ding_' + res.id, '1', 30);
