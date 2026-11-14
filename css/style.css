@@ -206,6 +206,13 @@ span.combo-btn { display: flex; align-items: center; justify-content: center; po
 }
 .member-chips .placeholder { color: var(--muted); font-size: 15px; }
 .member-chips .caret { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 18px; }
+.other-rows { display: flex; flex-direction: column; gap: 6px; }
+.other-row { display: flex; align-items: center; gap: 6px; }
+.other-row .o-name { flex: 1 1 auto; min-width: 0; }
+.other-row .o-x { flex: none; font-size: 13px; color: var(--muted); }
+.other-row .o-n { flex: none; width: 64px; text-align: center; }
+.other-row .o-del { flex: none; padding: 6px 10px; }
+.o-add { margin-top: 6px; align-self: flex-start; }
 .mchip { padding: 3px 10px; border-radius: 999px; background: var(--primary-soft); font-size: 14px; font-weight: 600; }
 
 .gallery { display: flex; flex-wrap: wrap; gap: 8px; }

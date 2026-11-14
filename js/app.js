@@ -202,7 +202,11 @@
     for (const el of document.querySelectorAll('#pmFields :is(input, select, textarea, button), #pmTracks :is(input, select, textarea, button), #pmClosedBox :is(input, select, textarea, button), #schedHead :is(input, select, textarea, button), #schedItems :is(input, select, textarea, button)')) el.disabled = true;
   }
   const canEditRemain = () => can('remain'); // 殘件/追蹤事項:依「設定 → 權限」,不再看填表人
-  const canEdit = (rec) => isAdmin() || (!!rec.authorEmail && String(rec.authorEmail).toLowerCase() === myEmail());
+  // 履歷建立日期(履歷編號 PR-YYMMDD-xxxx)
+  const createdDay = (rec) => { const m = /^PR-(\d{2})(\d{2})(\d{2})-/.exec(rec.id || ''); return m ? `20${m[1]}-${m[2]}-${m[3]}` : ''; };
+  const isAuthor = (rec) => !!rec.authorEmail && String(rec.authorEmail).toLowerCase() === myEmail();
+  // 填表人只能在建立當天修改;隔天起只有管理者可以修改
+  const canEdit = (rec) => isAdmin() || (isAuthor(rec) && (!createdDay(rec) || createdDay(rec) === todayISO()));
   const authorLine = (rec) => '填表人:' + (rec.author || '(未記錄)');
   function markDirty() { $('saveBtn').classList.toggle('dirty', isDirty()); }
 
@@ -620,15 +624,36 @@
       bar.style.animationDuration = ms + 'ms';
     });
   }
+  // 作業人員:「其他人員」可填人數,存成「聖大(12人)」;產生工時時時數 × 人數
+  const MEMBER_N = /^(.+?)\s*[(（]\s*(\d+)\s*人\s*[)）]$/;
+  const memberList = (s) => splitNames(s).map((t) => { const m = MEMBER_N.exec(t); return m ? { name: m[1].trim(), n: Math.max(1, +m[2]) } : { name: t, n: 1 }; });
+  const memberText = (name, n) => (n > 1 ? `${name}(${n}人)` : name);
   function fMembers(obj) {
-    const all = splitNames(obj.members);
     const known = new Set(lists().members || []);
-    let picked = all.filter((n) => known.has(n));
-    let manual = all.filter((n) => !known.has(n));
+    const all = memberList(obj.members);
+    let picked = all.filter((x) => known.has(x.name) && x.n === 1).map((x) => x.name);
+    const others = all.filter((x) => !(known.has(x.name) && x.n === 1));
     const chips = h('div', { class: 'member-chips' });
-    const manualInp = h('input', { type: 'text', placeholder: '其他人員(手動輸入,以、分隔)' });
-    manualInp.value = manual.join('、');
-    const sync = () => { obj.members = [...picked, ...splitNames(manualInp.value)].join('、'); markDirty(); };
+    const rowsBox = h('div', { class: 'other-rows' });
+    const sync = () => {
+      const extra = [...rowsBox.querySelectorAll('.other-row')].map((row) => {
+        const name = row.querySelector('.o-name').value.trim();
+        const n = Math.max(1, parseInt(row.querySelector('.o-n').value, 10) || 1);
+        return name ? memberText(name, n) : '';
+      }).filter(Boolean);
+      obj.members = [...picked, ...extra].join('、');
+      markDirty();
+    };
+    const addRow = (name = '', n = 1) => {
+      const nameInp = h('input', { type: 'text', class: 'o-name', placeholder: '其他人員(例如:聖大)', value: name });
+      const nInp = h('input', { type: 'number', class: 'o-n', min: '1', step: '1', inputmode: 'numeric', value: String(n), 'aria-label': '人數' });
+      const row = h('div', { class: 'other-row' }, nameInp, h('span', { class: 'o-x' }, '人數'), nInp,
+        h('button', { type: 'button', class: 'btn btn-ghost btn-sm o-del', 'aria-label': '移除', onclick: () => { row.remove(); if (!rowsBox.children.length) addRow(); sync(); } }, '✕'));
+      nameInp.addEventListener('input', sync);
+      nInp.addEventListener('input', sync);
+      rowsBox.append(row);
+      return row;
+    };
     const render = () => {
       chips.innerHTML = '';
       if (!picked.length) chips.append(h('span', { class: 'placeholder' }, '點此從清單選擇(可複選)'));
@@ -644,9 +669,10 @@
       render();
       sync();
     };
-    manualInp.addEventListener('input', sync);
+    if (others.length) others.forEach((x) => addRow(x.name, x.n)); else addRow();
     render();
-    return h('div', { class: 'field' }, h('span', { class: 'flabel' }, '作業人員'), chips, manualInp);
+    return h('div', { class: 'field' }, h('span', { class: 'flabel' }, '作業人員'), chips, rowsBox,
+      h('button', { type: 'button', class: 'btn btn-ghost btn-sm o-add', onclick: () => { addRow().querySelector('.o-name').focus(); } }, '＋ 其他人員'));
   }
 
   // ---------- 圖片 / 附件 ----------
@@ -1119,7 +1145,7 @@
   function applyResume(d, res) {
     d.changed.add('resume');
     const i = d.resumes.findIndex((r) => r.id === res.id);
-    if (i >= 0 && !canEdit(d.resumes[i])) throw new Error('只有填表人或管理者可以修改這份專案履歷');
+    if (i >= 0 && !canEdit(d.resumes[i])) throw new Error(isAuthor(d.resumes[i]) ? '專案履歷只能在建立當天修改,隔天起請洽管理者' : '只有填表人或管理者可以修改這份專案履歷');
     if (i >= 0) d.resumes[i] = res;
     else if (editing && editing.isNew) d.resumes.push(res);
     else throw new Error('雲端上的這份履歷已被刪除或在 Excel 中被修改,無法對應;請重新載入後再編輯');
@@ -1129,6 +1155,10 @@
     const obj = editing.obj;
     if (!String(obj.code || '').trim() && !String(obj.name || '').trim()) { toast('請填寫專案代號或專案名稱'); return false; }
     if (obj.start && obj.end && obj.end < obj.start) { toast('作業結束時間早於開始時間,請確認'); return false; }
+    if (!memberList(obj.members).length) {
+      await dialog('無法儲存', '作業人員至少要選取 1 人。', [{ label: '確定', value: true, cls: 'btn-primary' }]);
+      return false;
+    }
     const res = clone(obj);
     let nHours = 0, nSync = 0, nDel = 0;
     try {
@@ -1293,7 +1323,7 @@
     showView('readView', { title: resumeTitle(r), sub: authorLine(r), back: S.public ? null : '#/', link: true });
     $('linkBtn').hidden = true; // 唯讀檢視:不顯示複製連結,讓標題完整顯示
     if (S.public) $('menuBtn').hidden = true; else renderResumeNav(r.id);
-    $('readNote').textContent = '🔒 唯讀檢視' + (S.public ? '' : canEdit(r) ? '(要修改請從首頁查詢後開啟)' : '');
+    $('readNote').textContent = '🔒 唯讀檢視' + (S.public ? '' : canEdit(r) ? '(要修改請從首頁查詢後開啟)' : isAuthor(r) ? '(已過建立當天,不可修改;如需修改請洽管理者)' : '');
     const body = $('readBody');
     body.innerHTML = '';
     body.append(h('div', { class: 'panel' }, h('h3', { class: 'panel-title' }, '基本資料'),
@@ -2835,6 +2865,10 @@
   // 履歷改了日期/專案/報工時數時,已由履歷產生的工時一併更新(所有履歷都檢查日期與專案是否一致;
   // 時數只有在仍等於舊的報工時數時才跟著改,避免蓋掉個人手動調整過的時數)
   const resumeHrs = (r) => (Number(r.hours) > 0 ? Number(r.hours) : Hours.diffHours(r.start, r.end) || '');
+  // 其他人員填了人數時:工時 = 報工時數 × 人數
+  const countOf = (r, name) => { const m = memberList(r.members).find((x) => x.name.toLowerCase() === String(name || '').toLowerCase()); return m ? m.n : 1; };
+  const personHrs = (r, name) => { const v = resumeHrs(r); return v === '' ? '' : Math.round(v * countOf(r, name) * 100) / 100; };
+  const hourNote = (r, name) => { const n = countOf(r, name); return '專案履歷:' + resumeTitle(r).replace(/ 專案履歷$/, '') + (n > 1 ? `(${n}人)` : ''); };
   function hoursFromResume(d, res, old) {
     const list = Hours.read(d.book);
     let synced = 0;
@@ -2846,11 +2880,14 @@
       const set = (k, v) => { if ((x[k] || '') !== (v || '')) { x[k] = v; ch = true; } };
       const nd = (v) => (v ? Store.normDT(v, true) : '');
       set('start', nd(r.start)); set('end', nd(r.end)); set('code', r.code || ''); set('pname', r.name || '');
-      if (/^專案履歷:/.test(x.note || '')) set('note', '專案履歷:' + resumeTitle(r).replace(/ 專案履歷$/, ''));
-      if (r.id === res.id && old && String(x.hours) === String(resumeHrs(old)) && String(resumeHrs(res)) !== String(resumeHrs(old))) { x.hours = resumeHrs(res); ch = true; }
+      if (/^專案履歷:/.test(x.note || '')) set('note', hourNote(r, x.name));
+      if (r.id === res.id && old) {
+        const was = personHrs(old, x.name), now = personHrs(res, x.name);
+        if (String(x.hours) === String(was) && String(now) !== String(was)) { x.hours = now; ch = true; }
+      }
       if (ch) synced++;
     }
-    const people = splitNames(res.members);
+    const people = memberList(res.members).map((x) => x.name);
     const staff = Staff.read(d.book);
     const byName = (n) => staff.find((x) => [x.name, x.ename].some((v) => v && v.trim().toLowerCase() === n.toLowerCase()));
     // 已從作業人員移除的人:刪除這份履歷替他產生的工時
@@ -2866,7 +2903,6 @@
       return { added: 0, synced, removed };
     }
     const have = new Set(list.filter((x) => x.resume === res.id).map((x) => x.name.toLowerCase()));
-    const hrs = resumeHrs(res);
     let n = 0;
     for (const raw of people) {
       const st = byName(raw);
@@ -2875,7 +2911,7 @@
       have.add(name.toLowerCase());
       list.push({
         id: Store.newId('WH'), name, email: (st && st.email) || '', code: res.code || '', pname: res.name || '', cat: '工程',
-        start: res.start, end: res.end || '', hours: hrs, note: '專案履歷:' + resumeTitle(res).replace(/ 專案履歷$/, ''), resume: res.id, by: myEmail(),
+        start: res.start, end: res.end || '', hours: personHrs(res, raw), note: hourNote(res, raw), resume: res.id, by: myEmail(),
       });
       n++;
     }
