@@ -212,9 +212,11 @@
     const [path, qs] = raw.split('?');
     return { parts: path.split('/').filter(Boolean).map(decodeURIComponent), q: new URLSearchParams(qs || '') };
   }
+  // 由分享連結(例如釘釘發佈的履歷)開啟:一律顯示該則履歷的免登入唯讀檢視,不自動登入網站
+  const SHARE_OPEN = /^#\/?v\/[^/?]+/.test(location.hash);
   function route() {
     // 分享連結:尚未登入時經由 Apps Script 直接檢視(不需登入)
-    if (!S.ready && CFG.SHARE_URL && !Drive.isSignedIn()) {
+    if (!S.ready && CFG.SHARE_URL && (SHARE_OPEN || !Drive.isSignedIn())) {
       const { parts, q } = parseHash();
       if (parts[0] === 'v' && parts[1]) { publicView(parts[1], q.get('k')); return; }
     }
@@ -3638,6 +3640,7 @@
   // 此裝置登入過:權杖仍有效、或有長效登入憑證(未登出)就直接進入;否則登入畫面顯示「繼續使用 xxx」(一鍵、免選帳號)
   (async () => {
     const acct = Drive.savedAccount();
+    if (SHARE_OPEN && !Drive.__reset) return;
     if (!Drive.__reset && !Drive.isSignedIn() && Drive.resume) {
       if (Drive.hasRefresh()) busy('登入中…');
       const ok = await Drive.resume().catch(() => false);
