@@ -1130,17 +1130,17 @@
     if (!String(obj.code || '').trim() && !String(obj.name || '').trim()) { toast('請填寫專案代號或專案名稱'); return false; }
     if (obj.start && obj.end && obj.end < obj.start) { toast('作業結束時間早於開始時間,請確認'); return false; }
     const res = clone(obj);
-    let nHours = 0, nSync = 0;
+    let nHours = 0, nSync = 0, nDel = 0;
     try {
       await commit('儲存專案履歷…', (d) => {
         const prev = d.resumes.find((r) => r.id === res.id);
         const old = prev ? clone(prev) : null;
         applyResume(d, res);
-        ({ added: nHours, synced: nSync } = hoursFromResume(d, res, old));
+        ({ added: nHours, synced: nSync, removed: nDel } = hoursFromResume(d, res, old));
       });
     } catch (err) { toast('儲存失敗:' + errMsg(err), 6000); return false; }
     afterResumeSaved(res);
-    const msg = [nHours && `為 ${nHours} 位作業人員建立工時紀錄`, nSync && `同步更新 ${nSync} 筆工時`].filter(Boolean).join('、');
+    const msg = [nHours && `為 ${nHours} 位作業人員建立工時紀錄`, nSync && `同步更新 ${nSync} 筆工時`, nDel && `刪除 ${nDel} 筆已移除人員的工時`].filter(Boolean).join('、');
     toast('✅ 已儲存到雲端硬碟' + (msg ? ',' + msg : ''), msg ? 4500 : undefined);
     return true;
   }
@@ -1401,12 +1401,16 @@
     const obj = editing.obj;
     if (!isAdmin()) return toast('只有管理者可以刪除專案履歷');
     if (editing.isNew) { editing.snapshot = JSON.stringify(obj); await discardEditing(); go('#/'); return; }
-    if (!(await confirmYes('刪除專案履歷', `確定刪除「${resumeTitle(obj)}」?\n(已轉出的殘件項目會保留)`, '刪除', 'btn-danger'))) return;
+    if (!(await confirmYes('刪除專案履歷', `確定刪除「${resumeTitle(obj)}」?\n(這份履歷產生的工時會一併刪除;已轉出的殘件項目會保留)`, '刪除', 'btn-danger'))) return;
     try {
       await commit('刪除專案履歷…', (d) => {
         if (!isAdmin()) throw new Error('只有管理者可以刪除專案履歷');
         d.resumes = d.resumes.filter((r) => r.id !== obj.id);
         d.changed.add('resume');
+        // 一併刪除這份履歷產生的工時
+        const list = Hours.read(d.book);
+        const rest = list.filter((x) => x.resume !== obj.id);
+        if (rest.length !== list.length) Hours.write(d.book, rest);
       });
     } catch (err) { return toast('刪除失敗:' + errMsg(err), 6000); }
     editing = null;
@@ -2847,12 +2851,20 @@
       if (ch) synced++;
     }
     const people = splitNames(res.members);
-    if (!people.length || !res.start) {
-      if (synced) Hours.write(d.book, list);
-      return { added: 0, synced };
-    }
     const staff = Staff.read(d.book);
     const byName = (n) => staff.find((x) => [x.name, x.ename].some((v) => v && v.trim().toLowerCase() === n.toLowerCase()));
+    // 已從作業人員移除的人:刪除這份履歷替他產生的工時
+    const keep = new Set();
+    for (const raw of people) { keep.add(raw.toLowerCase()); const st = byName(raw); if (st) keep.add(st.name.toLowerCase()); }
+    let removed = 0;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const x = list[i];
+      if (x.resume === res.id && !keep.has(String(x.name || '').toLowerCase())) { list.splice(i, 1); removed++; }
+    }
+    if (!people.length || !res.start) {
+      if (synced || removed) Hours.write(d.book, list);
+      return { added: 0, synced, removed };
+    }
     const have = new Set(list.filter((x) => x.resume === res.id).map((x) => x.name.toLowerCase()));
     const hrs = resumeHrs(res);
     let n = 0;
@@ -2867,8 +2879,8 @@
       });
       n++;
     }
-    if (n || synced) Hours.write(d.book, list);
-    return { added: n, synced };
+    if (n || synced || removed) Hours.write(d.book, list);
+    return { added: n, synced, removed };
   }
   // ---- 統計(全員) ----
   const HR_STAT_COLS = [
