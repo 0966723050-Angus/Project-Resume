@@ -61,7 +61,7 @@
     try {
       busy('登入 Google…');
       // 由登入鍵直接開 Google 視窗;此裝置登入過就不再顯示選帳號畫面
-      if (!Drive.isSignedIn()) await Drive.requestToken(Drive.savedAccount() ? '' : undefined);
+      if (!Drive.isSignedIn() && !(Drive.resume && (await Drive.resume()))) await Drive.requestToken(Drive.savedAccount() ? '' : undefined);
       S.user = await Drive.whoAmI().catch(() => null);
       if (S.user) $('userLine').textContent = `${S.user.displayName}\n${S.user.emailAddress}`;
       busy(`尋找「${CFG.FILE_NAME}」…`);
@@ -3639,15 +3639,23 @@
   });
 
   route();
-  // 此裝置登入過:權杖仍有效就直接進入;已過期則登入畫面顯示「繼續使用 xxx」(一鍵、免選帳號)
-  const acct = Drive.savedAccount();
-  if (Drive.__reset || Drive.isSignedIn()) signIn();
-  else if (acct) {
-    $('signInBtn').textContent = `繼續使用 ${acct}`;
-    if (!$('welcomeMsg').textContent) $('welcomeMsg').textContent = '此裝置已登入過,按上方按鍵即可繼續(不需重新選帳號)。';
-  }
-  const rErr = Drive.redirectError && Drive.redirectError();
-  if (rErr && !Drive.isSignedIn()) { $('welcomeMsg').textContent = rErr; toast(rErr, 5000); }
+  // 此裝置登入過:權杖仍有效、或有長效登入憑證(未登出)就直接進入;否則登入畫面顯示「繼續使用 xxx」(一鍵、免選帳號)
+  (async () => {
+    const acct = Drive.savedAccount();
+    if (!Drive.__reset && !Drive.isSignedIn() && Drive.resume) {
+      if (Drive.hasRefresh()) busy('登入中…');
+      const ok = await Drive.resume().catch(() => false);
+      busy('');
+      if (ok) route();
+    }
+    if (Drive.__reset || Drive.isSignedIn()) signIn();
+    else if (acct) {
+      $('signInBtn').textContent = `繼續使用 ${acct}`;
+      if (!$('welcomeMsg').textContent) $('welcomeMsg').textContent = '此裝置已登入過,按上方按鍵即可繼續(不需重新選帳號)。';
+    }
+    const rErr = Drive.redirectError && Drive.redirectError();
+    if (rErr && !Drive.isSignedIn()) { $('welcomeMsg').textContent = rErr; toast(rErr, 5000); }
+  })();
 
   window.__pr = { S, Store, commit, get editing() { return editing; } };
 })();

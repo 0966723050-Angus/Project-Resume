@@ -4,6 +4,8 @@ window.APP_CONFIG = {
   // 已授權來源 https://0966723050-angus.github.io
   GOOGLE_CLIENT_ID: '873968217418-q5t3i90e4pf04kbd4l6vbpjib13etb7o.apps.googleusercontent.com',
   DRIVE_SCOPE: 'https://www.googleapis.com/auth/drive',
+  // 長效登入(未登出就不必再登入):需在 Apps Script「指令碼屬性」設定 GOOGLE_CLIENT_SECRET 後再改為 true
+  OFFLINE_LOGIN: false,
 
   // 共用雲端硬碟「ATK」上的檔案;誰能開由雲端硬碟共用設定決定
   FILE_NAME: 'Project Resume.xlsx',

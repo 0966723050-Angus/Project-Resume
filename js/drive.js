@@ -4,6 +4,9 @@
   const CFG = window.APP_CONFIG;
   const LS_HINT = 'pr_login_hint';   // 此裝置曾登入的帳號(下次免選帳號)
   const LS_TOKEN = 'pr_token';       // 存取權杖(約 1 小時有效),重新開啟 App 時免再登入
+  const LS_RT = 'pr_rt';             // 長效登入憑證(refresh token):未登出就一直有效,過期的存取權杖由 Apps Script 自動換新
+  // 長效登入:Google 授權碼由 Apps Script(SHARE_URL)以用戶端密鑰換成 refresh token;CFG.OFFLINE_LOGIN = true 才啟用
+  const OFFLINE = () => !!(CFG.OFFLINE_LOGIN && CFG.SHARE_URL);
   const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const FOLDER_MIME = 'application/vnd.google-apps.folder';
   const API = 'https://www.googleapis.com/drive/v3/files';
@@ -36,6 +39,50 @@
   const IS_ANDROID = /Android/i.test(navigator.userAgent);
   const redirectUri = () => location.origin + location.pathname.replace(/[^/]*$/, '');
   let redirectError = '';
+  let ready = Promise.resolve();
+  function setToken(t, expiresIn) {
+    accessToken = t;
+    tokenExpiry = Date.now() + (Number(expiresIn) || 3600) * 1000 - 60000;
+    lsSet(LS_TOKEN, JSON.stringify({ t: accessToken, exp: tokenExpiry }));
+  }
+  // 呼叫 Apps Script 換發權杖(text/plain POST,不需 CORS 預檢)
+  async function broker(body) {
+    const resp = await fetch(CFG.SHARE_URL, { method: 'POST', body: JSON.stringify(body) });
+    const j = await resp.json();
+    if (!j.ok) { const e = new Error(j.error || '換發權杖失敗'); e.code = j.error; throw e; }
+    return j;
+  }
+  async function exchangeCode(code, redirect) {
+    const j = await broker({ a: 'tok', code, redirect });
+    if (j.refresh_token) lsSet(LS_RT, j.refresh_token);
+    setToken(j.access_token, j.expires_in);
+    return accessToken;
+  }
+  // 以長效憑證靜默換新存取權杖;憑證失效(被撤銷/過期)時清除,改回一般登入
+  let rtBusy = null;
+  function refreshSilently() {
+    const rt = lsGet(LS_RT);
+    if (!rt || !CFG.SHARE_URL) return Promise.resolve(null);
+    if (!rtBusy) {
+      rtBusy = broker({ a: 'tok', rt }).then((j) => { setToken(j.access_token, j.expires_in); return accessToken; }, (e) => {
+        if (/invalid_grant|unauthorized_client|invalid_client/.test(e.code || e.message)) lsSet(LS_RT, null);
+        return null;
+      }).finally(() => { rtBusy = null; });
+    }
+    return rtBusy;
+  }
+  (function handleCodeReturn() {
+    const sp = new URLSearchParams(location.search);
+    if (!sp.has('code') && !(sp.has('error') && sp.has('state'))) return;
+    let saved = null;
+    try { saved = JSON.parse(lsGet(LS_REDIRECT) || 'null'); } catch {}
+    lsSet(LS_REDIRECT, null);
+    const code = sp.get('code'), err = sp.get('error'), ok = saved && sp.get('state') === saved.state;
+    history.replaceState(null, '', location.pathname + ((saved && saved.hash) || '#/'));
+    if (!ok) { redirectError = '登入驗證失敗,請重新登入'; return; }
+    if (err) { redirectError = err === 'access_denied' ? '已取消登入' : '登入失敗:' + err; return; }
+    ready = exchangeCode(code, redirectUri()).catch((e) => { redirectError = '登入失敗:' + e.message; });
+  })();
   (function handleRedirectReturn() {
     const hs = location.hash.replace(/^#/, '');
     if (!/(^|&)(access_token|error)=/.test(hs)) return;
@@ -56,12 +103,13 @@
     const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
     lsSet(LS_REDIRECT, JSON.stringify({ state, hash: location.hash }));
     const u = new URLSearchParams({
-      client_id: CFG.GOOGLE_CLIENT_ID, redirect_uri: redirectUri(), response_type: 'token',
+      client_id: CFG.GOOGLE_CLIENT_ID, redirect_uri: redirectUri(), response_type: OFFLINE() ? 'code' : 'token',
       scope: CFG.DRIVE_SCOPE, include_granted_scopes: 'true', state,
     });
     const hint = lsGet(LS_HINT);
     if (hint) u.set('login_hint', hint);
-    if (prompt === undefined && !hint) u.set('prompt', 'select_account');
+    if (OFFLINE()) { u.set('access_type', 'offline'); u.set('prompt', hint ? 'consent' : 'select_account consent'); } // consent:確保拿到長效憑證
+    else if (prompt === undefined && !hint) u.set('prompt', 'select_account');
     location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + u;
     // 頁面即將離開;App 內建瀏覽器(如 Android 釘釘)可能擋下導向而停在原頁,逾時就回報讓 App 提示改用瀏覽器開啟
     return new Promise((_, reject) => setTimeout(() => {
@@ -74,6 +122,7 @@
 
   function requestToken(prompt) {
     if (IS_MOBILE) return redirectLogin(prompt);
+    if (OFFLINE()) return codePopup();
     return new Promise((resolve, reject) => {
       if (!window.google || !google.accounts || !google.accounts.oauth2) {
         reject(new Error('Google 登入元件尚未載入,請確認網路後重試'));
@@ -101,8 +150,34 @@
     });
   }
 
+  // 電腦版長效登入:彈出視窗取得授權碼 → Apps Script 換成權杖與長效憑證
+  function codePopup() {
+    return new Promise((resolve, reject) => {
+      if (!window.google || !google.accounts || !google.accounts.oauth2) {
+        reject(new Error('Google 登入元件尚未載入,請確認網路後重試'));
+        return;
+      }
+      const hint = lsGet(LS_HINT);
+      const client = google.accounts.oauth2.initCodeClient({
+        client_id: CFG.GOOGLE_CLIENT_ID, scope: CFG.DRIVE_SCOPE, ux_mode: 'popup',
+        ...(hint ? { login_hint: hint } : { select_account: true }),
+        callback: (resp) => {
+          if (resp.error) { reject(new Error(resp.error_description || resp.error)); return; }
+          exchangeCode(resp.code, 'postmessage').then(resolve, reject);
+        },
+        error_callback: (err) => {
+          const e = new Error(err && err.type === 'popup_closed' ? '已關閉登入視窗' : err && err.type === 'popup_failed_to_open' ? '登入視窗被瀏覽器擋住' : '登入失敗');
+          e.type = err && err.type;
+          reject(e);
+        },
+      });
+      client.requestCode();
+    });
+  }
+
   async function ensureToken() {
     if (accessToken && Date.now() < tokenExpiry) return accessToken;
+    if (await refreshSilently()) return accessToken;
     // 已登入過的裝置:在非點擊情境下開不了登入視窗,改由 App 顯示「繼續」鍵(點擊後自動完成,不需再選帳號)
     if (reauth && lsGet(LS_HINT)) return reauth();
     return requestToken(lsGet(LS_HINT) ? '' : undefined);
@@ -110,12 +185,20 @@
 
   // 使用中若權杖快到期,趁使用者點擊時自動更新(Google 視窗會自動關閉),避免操作到一半要重新登入
   function refreshOnGesture() {
+    if (lsGet(LS_RT)) { if (accessToken && tokenExpiry - Date.now() < 10 * 60000) refreshSilently(); return; } // 有長效憑證:背景換新
     if (IS_MOBILE) return; // 手機是整頁導向,不能在操作中途自動更新
     if (refreshing || !accessToken || !lsGet(LS_HINT) || tokenExpiry - Date.now() > 10 * 60000) return;
     refreshing = requestToken('').catch(() => {}).finally(() => { refreshing = null; });
   }
 
   const isSignedIn = () => !!accessToken && Date.now() < tokenExpiry;
+  const hasRefresh = () => !!lsGet(LS_RT);
+  // 開啟網頁時:權杖過期但有長效憑證 → 靜默換新(不需按任何鍵)
+  async function resume() {
+    await ready;
+    if (isSignedIn()) return true;
+    return !!(await refreshSilently());
+  }
   const savedAccount = () => lsGet(LS_HINT);
   const setReauth = (fn) => { reauth = fn; };
 
@@ -258,7 +341,10 @@
   }
 
   function signOut() {
-    if (accessToken && window.google && google.accounts) google.accounts.oauth2.revoke(accessToken, () => {});
+    const rt = lsGet(LS_RT);
+    if (rt) fetch('https://oauth2.googleapis.com/revoke', { method: 'POST', mode: 'no-cors', body: new URLSearchParams({ token: rt }) }).catch(() => {});
+    else if (accessToken && window.google && google.accounts) google.accounts.oauth2.revoke(accessToken, () => {});
+    lsSet(LS_RT, null);
     accessToken = null;
     tokenExpiry = 0;
     lsSet(LS_HINT, null);
@@ -267,5 +353,5 @@
 
   const viewLink = (id) => `https://drive.google.com/file/d/${id}/view`;
 
-  window.Drive = { IS_MOBILE, IN_APP, IS_ANDROID, redirectError: () => redirectError, requestToken, isSignedIn, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, findAllByName, findIn, getMeta, download, upload, createFile, ensureFolder, media, trash, permissions, whoAmI, signOut, viewLink };
+  window.Drive = { IS_MOBILE, IN_APP, IS_ANDROID, redirectError: () => redirectError, requestToken, isSignedIn, hasRefresh, resume, savedAccount, setReauth, refreshOnGesture, ensureToken, findByName, findAllByName, findIn, getMeta, download, upload, createFile, ensureFolder, media, trash, permissions, whoAmI, signOut, viewLink };
 })();

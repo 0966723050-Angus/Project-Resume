@@ -47,10 +47,32 @@ function doPost(e) {
   try {
     var b = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (b.a === 'erp') return json(erpOut(String(b.key || ''), String(b.since || '')));
+    if (b.a === 'tok') return json(tokenBroker(b));
     return json({ ok: false, error: '不支援的動作' });
   } catch (err) {
     return json({ ok: false, error: String((err && err.message) || err) });
   }
+}
+
+// ---------- 長效登入:網頁取得的 Google 授權碼 / 長效憑證(refresh token)→ 換發存取權杖 ----------
+// 用戶端密鑰存在「指令碼屬性」GOOGLE_CLIENT_SECRET(不放在程式碼);用戶端 ID 與網頁 js/config.js 相同
+var OAUTH_CLIENT_ID = '873968217418-q5t3i90e4pf04kbd4l6vbpjib13etb7o.apps.googleusercontent.com';
+function tokenBroker(b) {
+  var secret = PropertiesService.getScriptProperties().getProperty('GOOGLE_CLIENT_SECRET');
+  if (!secret) return { ok: false, error: '尚未設定 GOOGLE_CLIENT_SECRET' };
+  var p = { client_id: OAUTH_CLIENT_ID, client_secret: secret };
+  if (b.code) {
+    var redirect = String(b.redirect || 'postmessage');
+    if (redirect !== 'postmessage' && redirect.indexOf(APP_URL) !== 0) return { ok: false, error: 'redirect_uri 不符' };
+    p.code = String(b.code); p.grant_type = 'authorization_code'; p.redirect_uri = redirect;
+  } else if (b.rt) {
+    p.refresh_token = String(b.rt); p.grant_type = 'refresh_token';
+  } else return { ok: false, error: '缺少參數' };
+  var r = UrlFetchApp.fetch('https://oauth2.googleapis.com/token', { method: 'post', payload: p, muteHttpExceptions: true });
+  var j = {};
+  try { j = JSON.parse(r.getContentText() || '{}'); } catch (e) {}
+  if (r.getResponseCode() !== 200) return { ok: false, error: j.error || ('HTTP ' + r.getResponseCode()), detail: j.error_description || '' };
+  return { ok: true, access_token: j.access_token, expires_in: j.expires_in, refresh_token: j.refresh_token || '' };
 }
 
 function json(o) {
