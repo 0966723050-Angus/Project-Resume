@@ -48,13 +48,15 @@
     const rows = [];
     for (let r = W.MIN_ROW; r <= W.MAX_ROW; r++) {
       const get = (col) => g.get(col + r);
-      const hasAny = ['A', 'B', 'C', 'E', 'F', 'G', 'H', 'I'].some((c) => get(c) !== undefined);
+      const hasAny = ['A', 'B', 'C', 'E', 'F', 'G', 'H', 'I', 'J'].some((c) => get(c) !== undefined);
       if (!hasAny) continue;
       const d = get('D');
       rows.push({
         row: r, item: str(get('A')), start: serialToISODate(get('B')), end: serialToISODate(get('C')),
         duration: d !== undefined && Number.isFinite(Number(d)) ? Number(d) : null,
         status: str(get('E')), hw: str(get('F')), sw: str(get('G')), note: str(get('H')), plan: str(get('I')),
+        // J 欄「假日出工」:六 / 日 / 六、日(日曆同步時預設週六日不排入,有勾選的才排入)
+        sat: /六/.test(str(get('J'))), sun: /日/.test(str(get('J'))),
       });
     }
     return rows;
@@ -301,6 +303,12 @@
       setCellInlineString(doc, getOrCreateCell(doc, rowEl, 'G', r, '3'), data.sw || '');
       setCellInlineString(doc, getOrCreateCell(doc, rowEl, 'H', r, '3'), data.note || '');
       setCellInlineString(doc, getOrCreateCell(doc, rowEl, 'I', r, '3'), data.plan || '');
+      setCellInlineString(doc, getOrCreateCell(doc, rowEl, 'J', r, '3'), [data.sat && '六', data.sun && '日'].filter(Boolean).join('、'));
+    }
+    // J 欄表頭
+    if (rowByNum.get(1)) {
+      const jh = getOrCreateCell(doc, rowByNum.get(1), 'J', 1, '5');
+      if (!Array.from(jh.children).some((c) => c.localName === 'is' || c.localName === 'v')) { jh.setAttribute('s', '5'); setCellInlineString(doc, jh, '假日出工'); }
     }
     ensurePlanColumn(doc, rowByNum.get(1));
     zip[listPath] = enc(new XMLSerializer().serializeToString(doc));

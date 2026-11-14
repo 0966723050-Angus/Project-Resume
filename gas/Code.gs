@@ -858,25 +858,29 @@ function syncCalendar() {
     var res = { ok: true, created: 0, updated: 0, removed: 0 };
     Object.keys(want).forEach(function (k) {
       var w = want[k];
-      var list = tagged[k] || [];
-      var ev = list[0] || byTitle[w.title]; // 沒有對應事件時,認領手動建立的同名全天事件,避免重複
-      list.slice(1).forEach(function (x) { x.deleteEvent(); res.removed++; });
+      // 一個工作項目可能拆成多段(跳過未出工的週六/週日),依開始日排序後逐段對應既有事件
+      var list = (tagged[k] || []).slice().sort(function (a, b) { return a.getStartTime() - b.getStartTime(); });
+      if (!list.length && byTitle[w.title]) list = [byTitle[w.title]]; // 沒有對應事件時,認領手動建立的同名全天事件,避免重複
       delete tagged[k];
-      if (!ev) {
-        ev = cal.createAllDayEvent(w.title, w.start, w.endEx);
-        ev.setTag(CAL_TAG, k);
-        ev.setColor(CalendarApp.EventColor.GREEN);
-        res.created++;
-        return;
-      }
-      var changed = false;
-      if (!ev.getTag(CAL_TAG)) { ev.setTag(CAL_TAG, k); changed = true; }
-      if (ev.getTitle() !== w.title) { ev.setTitle(w.title); changed = true; }
-      if (!ev.isAllDayEvent() || ev.getAllDayStartDate().getTime() !== w.start.getTime() || ev.getAllDayEndDate().getTime() !== w.endEx.getTime()) {
-        ev.setAllDayDates(w.start, w.endEx); changed = true;
-      }
-      if (ev.getColor() !== String(CalendarApp.EventColor.GREEN)) { ev.setColor(CalendarApp.EventColor.GREEN); changed = true; }
-      if (changed) res.updated++;
+      w.segs.forEach(function (sg, i) {
+        var ev = list[i];
+        if (!ev) {
+          ev = cal.createAllDayEvent(w.title, sg.start, sg.endEx);
+          ev.setTag(CAL_TAG, k);
+          ev.setColor(CalendarApp.EventColor.GREEN);
+          res.created++;
+          return;
+        }
+        var changed = false;
+        if (!ev.getTag(CAL_TAG)) { ev.setTag(CAL_TAG, k); changed = true; }
+        if (ev.getTitle() !== w.title) { ev.setTitle(w.title); changed = true; }
+        if (!ev.isAllDayEvent() || ev.getAllDayStartDate().getTime() !== sg.start.getTime() || ev.getAllDayEndDate().getTime() !== sg.endEx.getTime()) {
+          ev.setAllDayDates(sg.start, sg.endEx); changed = true;
+        }
+        if (ev.getColor() !== String(CalendarApp.EventColor.GREEN)) { ev.setColor(CalendarApp.EventColor.GREEN); changed = true; }
+        if (changed) res.updated++;
+      });
+      list.slice(w.segs.length).forEach(function (x) { x.deleteEvent(); res.removed++; });
     });
     // 不再是「已排定」的項目:完工(已移到資料庫)保留事件,其餘移除
     Object.keys(tagged).forEach(function (k) {
@@ -888,7 +892,8 @@ function syncCalendar() {
   } finally { lock.releaseLock(); }
 }
 
-// List 工作表 → { 工作項目: { title, start, endEx(結束日隔天) } };只取狀態「已排定/已確定」且有開始日期的列
+// List 工作表 → { 工作項目: { title, segs: [{ start, endEx(結束日隔天) }] } };只取狀態「已排定/已確定」且有開始日期的列
+// 週六/週日預設不出工(不排入日曆),J 欄「假日出工」有「六」「日」時才排入;整段都在週末時則照原日期排入
 function scheduledFrom(grid) {
   var out = {};
   grid.forEach(function (g) {
@@ -899,7 +904,15 @@ function scheduledFrom(grid) {
     if (s == null) return;
     if (e == null || e < s) e = s;
     var who = [cellText(g, 6), cellText(g, 7)].filter(Boolean).join('、');
-    out[item] = { title: who ? item + '_' + who : item, start: serialDate(s), endEx: serialDate(e + 1) };
+    var off = cellText(g, 10), sat = /六/.test(off), sun = /日/.test(off);
+    var segs = [], cur = null;
+    for (var n = s; n <= e; n++) {
+      var dow = serialDate(n).getDay(); // 0 = 週日、6 = 週六
+      var work = (dow !== 0 && dow !== 6) || (dow === 6 && sat) || (dow === 0 && sun);
+      if (work) { if (cur && cur.e === n - 1) cur.e = n; else segs.push(cur = { s: n, e: n }); }
+    }
+    if (!segs.length) segs = [{ s: s, e: e }];
+    out[item] = { title: who ? item + '_' + who : item, segs: segs.map(function (x) { return { start: serialDate(x.s), endEx: serialDate(x.e + 1) }; }) };
   });
   return out;
 }

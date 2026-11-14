@@ -148,6 +148,7 @@
       h('div', { class: 'wl-grid' },
         f('計畫開始', fmtDate(row.start)), f('計畫結束', fmtDate(row.end)),
         f('工時(天)', row.duration ?? '-'), f('狀態', row.status || '-'),
+        (row.sat || row.sun) && f('假日出工', [row.sat && '週六', row.sun && '週日'].filter(Boolean).join('、'), 'full'),
         people && f('作業人員', people, 'full'),
         row.plan && f('預計工作', row.plan, 'full pre'),
         row.note && f('備註', row.note, 'full')));
@@ -171,6 +172,9 @@
       row.status = sel.value;
       changed();
     };
+    // 假日出工:未勾選時同步到 Google 日曆會跳過週六/週日
+    const wk = (key, label) => h('label', { class: 'chk-inline' },
+      h('input', { type: 'checkbox', checked: !!row[key], onchange: (e) => { row[key] = e.target.checked; changed(); } }), label);
     const plan = h('textarea', { rows: 3, placeholder: '預計進行的工作內容', oninput: (e) => { row.plan = e.target.value; changed(); } });
     plan.value = row.plan || '';
     return h('div', { class: 'panel wl-edit' },
@@ -178,11 +182,12 @@
         fld('工作項目', text('item', '工作項目名稱'), 'span2'),
         fld('計畫開始時間', date('start')), fld('計畫結束時間', date('end')),
         fld('工時(天,自動計算)', dur), fld('狀態', sel),
+        fld('假日出工(未勾選時日曆不排週六日)', h('div', { class: 'chk-row' }, wk('sat', '週六出工'), wk('sun', '週日出工')), 'span2'),
         peopleField(row, 'hw', '硬體作業人員'), peopleField(row, 'sw', '軟體/電控作業人員'),
         fld('預計工作', plan, 'span2'), fld('備註', text('note'), 'span2')),
       h('div', { class: 'wl-actions' }, h('button', {
         type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => {
-          Object.assign(row, { item: '', start: '', end: '', duration: null, status: '', hw: '', sw: '', note: '', plan: '' });
+          Object.assign(row, { item: '', start: '', end: '', duration: null, status: '', hw: '', sw: '', note: '', plan: '', sat: false, sun: false });
           changed();
           renderList();
         },
@@ -301,7 +306,7 @@
   }
   function addRow() {
     if (D.rows.length >= maxRows()) { C.toast(`已達最大筆數上限(${maxRows()} 筆)`); return; }
-    D.rows.push({ row: null, item: '', start: '', end: '', duration: null, status: '', hw: '', sw: '', note: '', plan: '' });
+    D.rows.push({ row: null, item: '', start: '', end: '', duration: null, status: '', hw: '', sw: '', note: '', plan: '', sat: false, sun: false });
     sortByStart(D.rows);
     C.markDirty();
     renderList();
