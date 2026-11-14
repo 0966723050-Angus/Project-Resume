@@ -1130,12 +1130,18 @@
     if (!String(obj.code || '').trim() && !String(obj.name || '').trim()) { toast('請填寫專案代號或專案名稱'); return false; }
     if (obj.start && obj.end && obj.end < obj.start) { toast('作業結束時間早於開始時間,請確認'); return false; }
     const res = clone(obj);
-    let nHours = 0;
+    let nHours = 0, nSync = 0;
     try {
-      await commit('儲存專案履歷…', (d) => { applyResume(d, res); nHours = hoursFromResume(d, res); });
+      await commit('儲存專案履歷…', (d) => {
+        const prev = d.resumes.find((r) => r.id === res.id);
+        const old = prev ? clone(prev) : null;
+        applyResume(d, res);
+        ({ added: nHours, synced: nSync } = hoursFromResume(d, res, old));
+      });
     } catch (err) { toast('儲存失敗:' + errMsg(err), 6000); return false; }
     afterResumeSaved(res);
-    toast('✅ 已儲存到雲端硬碟' + (nHours ? `,並為 ${nHours} 位作業人員建立工時紀錄` : ''), nHours ? 4500 : undefined);
+    const msg = [nHours && `為 ${nHours} 位作業人員建立工時紀錄`, nSync && `同步更新 ${nSync} 筆工時`].filter(Boolean).join('、');
+    toast('✅ 已儲存到雲端硬碟' + (msg ? ',' + msg : ''), msg ? 4500 : undefined);
     return true;
   }
   function afterResumeSaved(res) {
@@ -2822,14 +2828,33 @@
   }
   // 專案履歷存檔時:依作業人員逐人建立工時(已建立過的人不重複;時數取履歷的報工時數,類別預設「工程」)
   // 作業人員以姓名或英文姓名比對公司人員,帶入中文姓名與 E-Mail
-  function hoursFromResume(d, res) {
+  // 履歷改了日期/專案/報工時數時,已由履歷產生的工時一併更新(所有履歷都檢查日期與專案是否一致;
+  // 時數只有在仍等於舊的報工時數時才跟著改,避免蓋掉個人手動調整過的時數)
+  const resumeHrs = (r) => (Number(r.hours) > 0 ? Number(r.hours) : Hours.diffHours(r.start, r.end) || '');
+  function hoursFromResume(d, res, old) {
+    const list = Hours.read(d.book);
+    let synced = 0;
+    const byId = new Map(d.resumes.map((r) => [r.id, r]));
+    for (const x of list) {
+      const r = x.resume && byId.get(x.resume);
+      if (!r || !r.start) continue;
+      let ch = false;
+      const set = (k, v) => { if ((x[k] || '') !== (v || '')) { x[k] = v; ch = true; } };
+      const nd = (v) => (v ? Store.normDT(v, true) : '');
+      set('start', nd(r.start)); set('end', nd(r.end)); set('code', r.code || ''); set('pname', r.name || '');
+      if (/^專案履歷:/.test(x.note || '')) set('note', '專案履歷:' + resumeTitle(r).replace(/ 專案履歷$/, ''));
+      if (r.id === res.id && old && String(x.hours) === String(resumeHrs(old)) && String(resumeHrs(res)) !== String(resumeHrs(old))) { x.hours = resumeHrs(res); ch = true; }
+      if (ch) synced++;
+    }
     const people = splitNames(res.members);
-    if (!people.length || !res.start) return 0;
+    if (!people.length || !res.start) {
+      if (synced) Hours.write(d.book, list);
+      return { added: 0, synced };
+    }
     const staff = Staff.read(d.book);
     const byName = (n) => staff.find((x) => [x.name, x.ename].some((v) => v && v.trim().toLowerCase() === n.toLowerCase()));
-    const list = Hours.read(d.book);
     const have = new Set(list.filter((x) => x.resume === res.id).map((x) => x.name.toLowerCase()));
-    const hrs = Number(res.hours) > 0 ? Number(res.hours) : Hours.diffHours(res.start, res.end) || '';
+    const hrs = resumeHrs(res);
     let n = 0;
     for (const raw of people) {
       const st = byName(raw);
@@ -2842,8 +2867,8 @@
       });
       n++;
     }
-    if (n) Hours.write(d.book, list);
-    return n;
+    if (n || synced) Hours.write(d.book, list);
+    return { added: n, synced };
   }
   // ---- 統計(全員) ----
   const HR_STAT_COLS = [
