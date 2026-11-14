@@ -3545,10 +3545,6 @@
     if (await confirmYes('登出', `確定登出 ${myEmail()}?\n下次開啟需要重新登入。`, '登出', 'btn-danger')) signOut();
   };
   $('signInBtn').onclick = signIn;
-  if (Drive.IN_APP) {
-    $('welcomeMsg').textContent = '您正在 App 內建瀏覽器(如釘釘)中開啟;若登入沒有反應,請點右上角「⋯」→「在瀏覽器中開啟」。';
-    $('welcomeMsg').after(h('button', { type: 'button', class: 'btn btn-ghost wide', onclick: () => openInBrowser(false) }, '🌐 改用瀏覽器開啟'));
-  }
 
   // 權杖過期(約 1 小時)時:顯示「繼續」鍵,點擊後以記住的帳號自動完成登入(不需再選帳號)
   let reauthPending = null;
