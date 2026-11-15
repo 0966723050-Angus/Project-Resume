@@ -396,7 +396,7 @@ function sendHoursNotice(test) {
     MailApp.sendEmail({
       to: NOTIFY_TO || Session.getEffectiveUser().getEmail(),
       subject: '[測試,未傳到釘釘] 【工時提報提醒】' + mon.replace('-', '/') + ' 共 ' + list.length + ' 人未完成',
-      body: msg.replace(/\[前往工時統計\]\([^)]*\)/, ''), // 信件不放網站連結(釘釘訊息仍保留)
+      body: msg,
       name: 'ATK專案履歷',
     });
     return;
@@ -419,7 +419,7 @@ function hoursNoticeMarkdown(mon, list, deadline, url) {
   var md = function (d) { return +d.slice(5, 7) + '/' + +d.slice(8); };
   var lines = list.map(function (p) { return '- ' + p.name + ':' + p.miss.length + ' 天(' + p.miss.map(md).join('、') + ')'; });
   return '### 【工時提報提醒】' + mon.replace('-', '/') + '\n\n以下同仁尚有工時未提報,請於 **' + HOURS_DEADLINE_DAYS + ' 天內(' + deadline + ' 前)**完成:\n\n' +
-    lines.join('\n') + '\n\n若當天請假,請在工時統計頁的方框打勾。[前往工時統計](' + url + ')';
+    lines.join('\n') + '\n\n若當天請假,請在工時統計頁的方框打勾。前往工時統計'; // 只留文字,不放連結
 }
 function holidaySet(list) {
   var set = {};
