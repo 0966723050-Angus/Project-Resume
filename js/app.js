@@ -84,6 +84,7 @@
         return;
       }
       S.ready = true;
+      setTimeout(() => purgeOldOff(), 3000); // 每年 1/10 起清除舊年度的手動假日
       applyPerms();
       WorkList.available().then((ok) => { $('navWork').hidden = $('navGantt').hidden = !ok; });
       if (can('pmView')) pmLoad(false, true).then(() => { if (!$('listView').hidden) fillCodeFilter(); }).catch(() => {}); // 專案清單以專案管理檔為準
@@ -2645,6 +2646,17 @@
       h('b', {}, miss.length ? `未提報 ${miss.length} 天` : '✅ 已全部提報'), open.length ? h('span', { class: 'hr-miss-sep' }, ':') : null, ...boxes),
       open.length ? h('small', { class: 'hr-miss-note' }, '若當天請假,請於方框打勾') : null);
   }
+  // 手動假日保留範圍:每年 1/10 起清除前一年以前手動建立的假日(1/1~1/9 保留去年的,讓 1 月初檢查 12 月未提報時仍正確)
+  const offKeepFrom = () => { const t = todayISO(), y = +t.slice(0, 4); return (t.slice(5) >= '01-10' ? y : y - 1) + '-01-01'; };
+  // 開啟時(有工時全員權限者)自動清除過期的手動假日
+  async function purgeOldOff() {
+    if (!S.data || !can('hoursAll')) return;
+    const from = offKeepFrom();
+    if (!Hours.readOff(S.data.book).some((r) => r.date < from)) return;
+    try {
+      await commit('清除舊年度假日…', (x) => Hours.writeOff(x.book, Hours.readOff(x.book).filter((r) => r.date >= from)));
+    } catch (err) { /* 下次再試 */ }
+  }
   // 颱風/特定假日(限工時統計(全員)):以日曆選日期,全員放假、不算未提報(存「公司假日」工作表)
   async function editOffDays() {
     const date = h('input', { type: 'date', class: 'hr-ask-month', 'aria-label': '放假日期' });
@@ -2652,8 +2664,7 @@
     const note = h('input', { type: 'text', class: 'hr-ask-month', placeholder: '說明(例如:颱風假)', 'aria-label': '說明' });
     const list = h('div', { class: 'off-list' });
     const natBox = h('div', { class: 'off-list off-nat' });
-    // 清單只顯示今年:每年 1/1 起改列新年度的國定假日,去年手動增加的假日從清單移除
-    // (去年的資料保留到隔年,讓 1 月初檢查 12 月未提報時仍正確;更早的在下次存檔時清除)
+    // 清單只顯示今年:每年 1/1 起改列新年度的國定假日;手動增加的舊年度假日於每年 1/10 清除(offKeepFrom)
     const year = todayISO().slice(0, 4);
     const draw = () => {
       list.innerHTML = '';
@@ -2674,8 +2685,7 @@
     const saveOff = async (d, text) => {
       try {
         await commit(text == null ? '刪除假日…' : '設定假日…', (x) => {
-          const keepFrom = String(+year - 1); // 只保留去年(1 月檢查 12 月用)與今年的手動假日
-          const rows = Hours.readOff(x.book).filter((r) => r.date !== d && r.date.slice(0, 4) >= keepFrom);
+          const rows = Hours.readOff(x.book).filter((r) => r.date !== d && r.date >= offKeepFrom());
           if (text != null) rows.push({ date: d, note: text, by: myEmail() });
           Hours.writeOff(x.book, rows);
         });
@@ -2692,7 +2702,7 @@
     draw();
     drawNat();
     await dialog(`${year} 年假日設定`, h('div', {},
-      h('div', { class: 'hint' }, '下列日期全員放假,不算未提報(月初通知也排除)。國定假日依人事行政總處公告自動帶入;每年 1/1 起更新為新年度,手動增加的假日也會重新開始。'),
+      h('div', { class: 'hint' }, '下列日期全員放假,不算未提報(月初通知也排除)。國定假日依人事行政總處公告自動帶入,每年 1/1 起更新為新年度;手動增加的假日於每年 1/10 清除。'),
       h('h4', { class: 'off-h' }, '手動增加(颱風假 / 公司特定假日)'),
       h('div', { class: 'off-add' }, date, note, add), list,
       h('h4', { class: 'off-h' }, '國定假日(人事行政總處公告)'), natBox), [{ label: '關閉', value: true, cls: 'btn-primary' }]);
