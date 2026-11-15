@@ -732,6 +732,10 @@ body.pm-ro #pmFields details > summary { pointer-events: auto; }
 #hrOffBtn { flex: none; min-height: 44px; }
 .off-add { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .off-add input[type=date] { flex: 1 1 150px; width: auto; }
+.off-h { margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
+.off-item.fixed { opacity: .85; }
+.off-item .off-lock { flex: none; font-size: 13px; }
+.off-list.off-nat { max-height: 32vh; }
 .off-add input[type=text] { flex: 2 1 160px; width: auto; }
 .off-list { max-height: 40vh; overflow: auto; }
 .off-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }

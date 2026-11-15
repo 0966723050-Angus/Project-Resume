@@ -100,6 +100,23 @@
     }
     return cal[year];
   }
+  // 人事行政總處公告的國定假日(有名稱的假日,不含一般週六日):[{ date: 'yyyy-mm-dd', note: '名稱' }]
+  const natCache = {};
+  function nationalHolidays(year) {
+    if (!natCache[year]) {
+      natCache[year] = (async () => {
+        const key = 'pr_twnat_' + year;
+        try { const c = JSON.parse(localStorage.getItem(key) || 'null'); if (c) return c; } catch { /* 忽略 */ }
+        const resp = await fetch(CAL_URL(year));
+        if (!resp.ok) throw new Error('calendar ' + resp.status);
+        const list = (await resp.json()).filter((d) => d.isHoliday && String(d.description || '').trim())
+          .map((d) => ({ date: `${d.date.slice(0, 4)}-${d.date.slice(4, 6)}-${d.date.slice(6, 8)}`, note: String(d.description).trim() }));
+        if (list.length) try { localStorage.setItem(key, JSON.stringify(list)); } catch { /* 忽略 */ }
+        return list;
+      })().catch(() => { delete natCache[year]; return null; });
+    }
+    return natCache[year];
+  }
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   // 某月(yyyy-mm)到 before(不含,yyyy-mm-dd)為止的上班日;當天 23:59 前還能提報,所以不含今天
   // off:公司另外公告的全員放假日(颱風假等,Set<'yyyy-mm-dd'>)
@@ -191,5 +208,5 @@
   const readOff = (book) => readSheet(book, OFF_SHEET, OFF_FIELDS);
   const writeOff = (book, list) => writeSheet(book, OFF_SHEET, OFF_FIELDS, list.slice().sort((a, b) => a.date.localeCompare(b.date)));
 
-  window.Hours = { SHEET, FIELDS, CATS, read, write, diffHours, workdays, reportedDays, readLeave, writeLeave, readOff, writeOff };
+  window.Hours = { SHEET, FIELDS, CATS, read, write, diffHours, workdays, reportedDays, readLeave, writeLeave, readOff, writeOff, nationalHolidays };
 })();
