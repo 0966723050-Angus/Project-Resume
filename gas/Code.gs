@@ -335,7 +335,7 @@ function overdueByOwner(r, staffGrid) {
   var mails = {}, unknown = {};
   ['remain', 'pm'].forEach(function (kind) {
     r[kind].forEach(function (x) {
-      String(x.owner || '').split(/[、,，;；\/]+/).map(function (t) { return t.trim(); }).filter(Boolean).forEach(function (nm) {
+      String(x.owner || '').split(/[、,，;；\/／&＆]+/).map(function (t) { return t.trim(); }).filter(Boolean).forEach(function (nm) {
         var s = find(nm);
         if (!s) { unknown[nm] = true; return; }
         var m = mails[s.email] || (mails[s.email] = { name: s.name || nm, r: { remain: [], pm: [] } });
