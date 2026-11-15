@@ -301,7 +301,7 @@ function sendOverdue(always) {
     MailApp.sendEmail({
       to: to,
       subject: '【逾期提醒 ' + md + '】追蹤/殘件 ' + rr.remain.length + ' 項、專案管理追蹤 ' + rr.pm.length + ' 項',
-      body: OVERDUE_INTRO + '\n\n' + overdueText(rr) + (extraText || '') + '\n\n' + APP_URL,
+      body: OVERDUE_INTRO + '\n\n' + overdueText(rr) + (extraText || ''), // 通知信不放網站連結
       htmlBody: '<p style="font-family:sans-serif;font-size:15px;color:#b91c1c;font-weight:bold">' + htmlEsc(OVERDUE_INTRO) + '</p>' + overdueHtml(rr) + (extraHtml || ''),
       name: 'ATK專案履歷',
     });
@@ -396,7 +396,7 @@ function sendHoursNotice(test) {
     MailApp.sendEmail({
       to: NOTIFY_TO || Session.getEffectiveUser().getEmail(),
       subject: '[測試,未傳到釘釘] 【工時提報提醒】' + mon.replace('-', '/') + ' 共 ' + list.length + ' 人未完成',
-      body: msg,
+      body: msg.replace(/\[前往工時統計\]\([^)]*\)/, ''), // 信件不放網站連結(釘釘訊息仍保留)
       name: 'ATK專案履歷',
     });
     return;
@@ -655,7 +655,7 @@ function overdueHtml(r) {
     return h + '</table>';
   };
   return '<div style="font-family:sans-serif;color:#111">' + table('追蹤/殘件事項', r.remain, true) + table('專案管理 追蹤事項', r.pm, false) +
-    '<p style="margin-top:18px"><a href="' + APP_URL + '">開啟 ATK專案履歷</a></p></div>';
+    '</div>';
 }
 
 // ---------- 每日專案管理現況(08:30 寄信給管理者) ----------
@@ -687,7 +687,7 @@ function pmReport() {
   MailApp.sendEmail({
     to: NOTIFY_TO || Session.getEffectiveUser().getEmail(),
     subject: '【專案現況 ' + md + '】未結案專案 ' + list.length + ' 個、追蹤事項(Open)' + items + ' 項、殘件/追蹤 ' + remains.length + ' 項',
-    body: pmReportText(list, remains) + '\n\n' + APP_URL,
+    body: pmReportText(list, remains),
     htmlBody: pmReportHtml(list, remains),
     name: 'ATK專案履歷',
   });
@@ -800,7 +800,7 @@ function pmReportHtml(list, remains) {
     h += '</div>';
   });
   if (g.others.length) h += '<h3 style="margin:24px 0 8px;font-size:17px">其他殘件事項(專案不在上列清單,' + g.others.length + ' 項)</h3>' + remainRows(g.others, true);
-  return h + '<p style="margin-top:18px"><a href="' + APP_URL + '#/pm">專案管理</a> ・ <a href="' + APP_URL + '#/remain">殘件/追蹤事項</a></p></div>';
+  return h + '</div>';
 }
 
 // ---------- 傳送到釘釘群組(自訂機器人) ----------
