@@ -644,9 +644,9 @@
       obj.members = [...picked, ...extra].join('、');
       markDirty();
     };
-    const addRow = (name = '', n = 1) => {
-      const nameInp = h('input', { type: 'text', class: 'o-name', placeholder: '其他人員(例如:聖大)', value: name });
-      const nInp = h('input', { type: 'number', class: 'o-n', min: '1', step: '1', inputmode: 'numeric', value: String(n), 'aria-label': '人數' });
+    const addRow = (name = '', n = '') => {
+      const nameInp = h('input', { type: 'text', class: 'o-name', placeholder: '輸入外包名稱(例如:聖大)', value: name });
+      const nInp = h('input', { type: 'number', class: 'o-n', min: '1', step: '1', inputmode: 'numeric', value: n > 1 ? String(n) : '', 'aria-label': '人數' });
       const row = h('div', { class: 'other-row' }, nameInp, h('span', { class: 'o-x' }, '人數'), nInp,
         h('button', { type: 'button', class: 'btn btn-ghost btn-sm o-del', 'aria-label': '移除', onclick: () => { row.remove(); if (!rowsBox.children.length) addRow(); sync(); } }, '✕'));
       nameInp.addEventListener('input', sync);
