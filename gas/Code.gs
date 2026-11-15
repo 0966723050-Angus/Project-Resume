@@ -280,23 +280,70 @@ function dailyNotifyPlan() {
 function dailyOverdue() { sendOverdue(false); }
 function testNotify() { sendOverdue(true); }
 
+// 管理者收到全部逾期事項;另外每位負責人(依「公司人員」的姓名/英文姓名對到 E-Mail)只收到自己負責的事項
+// always(testNotify):只寄給管理者預覽,信末列出正式寄送時各負責人會收到幾項,不寄給負責人
+var OVERDUE_INTRO = '系統檢查到下列專案中的事項已經逾期,請儘速進行確認處理並至專案履歷完善各項進度。';
 function sendOverdue(always) {
   var today = todaySerial();
-  var remainGrid = readGrid(getFile(), REMAIN_SHEET);
+  var file = getFile();
+  var remainGrid = readGrid(file, REMAIN_SHEET);
   var pmFile = findByNames(PM_FILE_NAMES, 'PM_FILE_ID');
   var pmGrid = pmFile ? readGrid(pmFile, PM_SHEET) : null;
   var r = overdueFrom(remainGrid, pmGrid, today);
   var n = r.remain.length + r.pm.length;
   if (!n && !always) return;
   var md = Utilities.formatDate(new Date(), TZ, 'M/d');
-  var subject = '【逾期提醒 ' + md + '】追蹤/殘件 ' + r.remain.length + ' 項、專案管理追蹤 ' + r.pm.length + ' 項';
-  MailApp.sendEmail({
-    to: NOTIFY_TO || Session.getEffectiveUser().getEmail(),
-    subject: subject,
-    body: overdueText(r) + (pmFile ? '' : '\n(找不到 Project Management.xlsx)') + '\n\n' + APP_URL,
-    htmlBody: overdueHtml(r) + (pmFile ? '' : '<p>(找不到 Project Management.xlsx)</p>'),
-    name: 'ATK專案履歷',
+  var admin = NOTIFY_TO || Session.getEffectiveUser().getEmail();
+  var staffGrid = null;
+  try { staffGrid = readGrid(file, STAFF_SHEET); } catch (err) { /* 沒有公司人員表 */ }
+  var by = overdueByOwner(r, staffGrid);
+  var send = function (to, rr, extraText, extraHtml) {
+    MailApp.sendEmail({
+      to: to,
+      subject: '【逾期提醒 ' + md + '】追蹤/殘件 ' + rr.remain.length + ' 項、專案管理追蹤 ' + rr.pm.length + ' 項',
+      body: OVERDUE_INTRO + '\n\n' + overdueText(rr) + (extraText || '') + '\n\n' + APP_URL,
+      htmlBody: '<p style="font-family:sans-serif;font-size:15px;color:#b91c1c;font-weight:bold">' + htmlEsc(OVERDUE_INTRO) + '</p>' + overdueHtml(rr) + (extraHtml || ''),
+      name: 'ATK專案履歷',
+    });
+  };
+  // 管理者:全部事項 + 寄送摘要
+  var who = Object.keys(by.mails).map(function (em) { var x = by.mails[em]; return x.name + '(' + (x.r.remain.length + x.r.pm.length) + ' 項)'; });
+  var note = (pmFile ? '' : '(找不到 Project Management.xlsx)\n') +
+    (always ? '[測試] 正式寄送時,' : '') + '已另寄給負責人:' + (who.join('、') || '(無)') +
+    (by.unknown.length ? '\n找不到 E-Mail 的負責人(未寄送):' + by.unknown.join('、') : '');
+  send(admin, r, '\n\n' + note, '<p style="font-family:sans-serif;font-size:13px;color:#6b7280;white-space:pre-line">' + htmlEsc(note) + '</p>');
+  if (always) return;
+  Object.keys(by.mails).forEach(function (em) {
+    if (em === String(admin).toLowerCase()) return; // 管理者已收到完整清單
+    try { send(em, by.mails[em].r); } catch (err) { Logger.log('寄給 ' + em + ' 失敗:' + err); }
   });
+}
+// 依負責人分組:負責人欄可有多人(、,;/ 分隔),以公司人員的姓名或英文姓名比對 E-Mail
+function overdueByOwner(r, staffGrid) {
+  var staff = [];
+  if (staffGrid) {
+    var st = tableOf(staffGrid), sc = st.col;
+    st.rows.forEach(function (row) {
+      var em = cellText(row, sc['E-Mail']).toLowerCase();
+      if (em) staff.push({ name: cellText(row, sc['姓名']), ename: cellText(row, sc['英文姓名']), email: em });
+    });
+  }
+  var find = function (n) {
+    var k = n.toLowerCase();
+    return staff.filter(function (s) { return [s.name, s.ename].some(function (v) { return v && v.toLowerCase() === k; }); })[0];
+  };
+  var mails = {}, unknown = {};
+  ['remain', 'pm'].forEach(function (kind) {
+    r[kind].forEach(function (x) {
+      String(x.owner || '').split(/[、,，;；\/]+/).map(function (t) { return t.trim(); }).filter(Boolean).forEach(function (nm) {
+        var s = find(nm);
+        if (!s) { unknown[nm] = true; return; }
+        var m = mails[s.email] || (mails[s.email] = { name: s.name || nm, r: { remain: [], pm: [] } });
+        if (m.r[kind].indexOf(x) < 0) m.r[kind].push(x);
+      });
+    });
+  });
+  return { mails: mails, unknown: Object.keys(unknown) };
 }
 
 // ── 每月工時未提報通知 ──
