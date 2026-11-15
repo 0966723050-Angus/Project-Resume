@@ -646,8 +646,18 @@
     };
     const addRow = (name = '', n = '') => {
       const nameInp = h('input', { type: 'text', class: 'o-name', placeholder: '輸入外包名稱(例如:聖大)', value: name });
-      const nInp = h('input', { type: 'number', class: 'o-n', min: '1', step: '1', inputmode: 'numeric', value: n > 1 ? String(n) : '', 'aria-label': '人數' });
-      const row = h('div', { class: 'other-row' }, nameInp, h('span', { class: 'o-x' }, '人數'), nInp,
+      const nInp = h('input', { type: 'number', class: 'o-n', min: '1', step: '1', inputmode: 'numeric', placeholder: '人數', value: n > 1 ? String(n) : '', 'aria-label': '人數' });
+      // 外包名稱:可手動輸入,或按 ▾ 從「外包」清單選擇(清單可新增 / 刪除,存在 Choice 工作表)
+      const pick = h('button', {
+        type: 'button', class: 'btn btn-ghost btn-sm o-pick', 'aria-label': '從外包清單選擇', onclick: async () => {
+          const v = await openPicker({ title: '外包', key: 'vendor' });
+          if (v == null) return;
+          nameInp.value = v;
+          sync();
+          if (!nInp.value) nInp.focus();
+        },
+      }, '▾');
+      const row = h('div', { class: 'other-row' }, h('span', { class: 'o-tag' }, '外包'), h('div', { class: 'o-combo' }, nameInp, pick), nInp,
         h('button', { type: 'button', class: 'btn btn-ghost btn-sm o-del', 'aria-label': '移除', onclick: () => { row.remove(); if (!rowsBox.children.length) addRow(); sync(); } }, '✕'));
       nameInp.addEventListener('input', sync);
       nInp.addEventListener('input', sync);
@@ -672,7 +682,7 @@
     if (others.length) others.forEach((x) => addRow(x.name, x.n)); else addRow();
     render();
     return h('div', { class: 'field' }, h('span', { class: 'flabel' }, '作業人員'), chips, rowsBox,
-      h('button', { type: 'button', class: 'btn btn-ghost btn-sm o-add', onclick: () => { addRow().querySelector('.o-name').focus(); } }, '＋ 其他人員'));
+      h('button', { type: 'button', class: 'btn btn-ghost btn-sm o-add', onclick: () => { addRow().querySelector('.o-name').focus(); } }, '＋ 外包'));
   }
 
   // ---------- 圖片 / 附件 ----------
